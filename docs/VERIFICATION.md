@@ -30,13 +30,19 @@ npm run build
 - GitHub Actions workflows actionlint: 2/2 pass
 - IPA packaging script Bash parser: zero syntax-error nodes
 - Qwen/MLX/StoreKit source-reference scan: clean
+- GitHub Actions Run #1: success on commit 85b15464ad7bad895343b705e21301ee6e18779d
+- Xcode 16.4 / iPhoneOS 18.5 unsigned arm64 Release archive: pass
+- Pinned whisper XCFramework device and simulator slices: built successfully
+- Downloaded IPA: ZIP/Payload, bundle ID, arm64 Mach-O, no signature command, and no bundled models verified
+- IPA SHA-256: 91c0190f63ed707e8f30aa216c6e9906e8fac7b1a7520bb1d0964ce91919c5ca
 
 Tree-sitter is not compilation and does not validate Swift types, actors, Apple SDK availability, or linkage.
 
-The macOS validation and unsigned-IPA workflows under **.github/workflows** are
-prepared but have not run because these changes have not been committed or
-pushed. The IPA packaging shell script has only received static/syntax
-validation on Windows; the archive and IPA remain unbuilt.
+The unsigned-IPA workflow completed successfully:
+https://github.com/laviant2063/personal-AI-voice-notes/actions/runs/33278908003
+
+The separate iOS validation workflow has not run, so portable core tests,
+simulator build/tests, and Xcode unit tests remain outstanding.
 
 ## Written but not run
 
@@ -46,9 +52,9 @@ These require macOS/Xcode. swift test covers the portable store/model subset. Xc
 
 ## Requires macOS/Xcode
 
-1. Build the pinned Whisper XCFramework.
-2. Run swift test.
-3. Build and test WalkWrite for an iOS simulator.
+1. Run swift test.
+2. Build and test WalkWrite for an iOS simulator.
+3. Run the Xcode unit/UI tests.
 4. Review compiler warnings and the generated privacy report.
 
 ## Requires physical device

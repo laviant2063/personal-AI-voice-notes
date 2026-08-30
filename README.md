@@ -2,11 +2,11 @@
 
 A personal iPhone/iPad voice-note app based on [WalkWrite](https://github.com/lbacaj/WalkWrite-opensource). It records audio locally, transcribes with an installed multilingual whisper.cpp model, lets you edit and search transcripts, and optionally sends the edited text to your own Cloudflare Worker for one structured AI result.
 
-> Development status: the source and backend mock path are implemented. The repository was prepared on Windows, where Swift and Xcode are unavailable. An iOS build, simulator run, and physical-device validation have **not** been performed yet.
+> Development status: the source and backend mock path are implemented. GitHub Actions Run #1 compiled and linked an unsigned arm64 device Release archive with Xcode 16.4. Simulator tests, signed installation, and physical-device validation have **not** been performed yet.
 
 ## Architecture
 
-\`\`\`text
+```text
 AVAudioRecorder → app-owned WAV → durable Note metadata
                                   ↓
                    installed whisper.cpp GGML model
@@ -22,9 +22,9 @@ Cloudflare Worker → OpenAI Responses API + strict JSON Schema
        title + summary + key points + action items
                                   ↓ revision/request-token guard
                      atomic local JSON persistence
-\`\`\`
+```
 
-The iOS client never receives or stores \`OPENAI_API_KEY\`. The Worker has no note database and does not permanently store transcripts.
+The iOS client never receives or stores `OPENAI_API_KEY`. The Worker has no note database and does not permanently store transcripts.
 
 ## What works offline
 
@@ -44,8 +44,8 @@ Online-only functionality is limited to AI title, summary, key points, and actio
 - Note metadata is written before microphone capture starts. Stop finalizes it before STT.
 - Audio remains available when STT, networking, backend, or AI fails.
 - A corrupt note index becomes read-only; it is never silently replaced by an empty list.
-- Atomic writes keep the previous readable index as \`notes.backup.json\`.
-- Raw STT is captured once. Editing changes only \`editedTranscript\` and increments its revision.
+- Atomic writes keep the previous readable index as `notes.backup.json`.
+- Raw STT is captured once. Editing changes only `editedTranscript` and increments its revision.
 - An AI response must match the active request token and transcript revision.
 - Regeneration replaces old AI fields only after the entire new result validates.
 - Turning AI on does not upload past notes. Network reconnection has no upload callback.
@@ -67,29 +67,29 @@ The included framework/model LFS placeholders are not runtime assets. The app ex
 
 ## Xcode setup
 
-\`\`\`bash
+```bash
 git submodule update --init --depth 1 -- whisper.cpp
 ./build-whisper-xcframework.sh
 cp Config.xcconfig.template Config.xcconfig
 open WalkWrite.xcodeproj
-\`\`\`
+```
 
-Edit the ignored \`Config.xcconfig\`:
+Edit the ignored `Config.xcconfig`:
 
-\`\`\`xcconfig
+```xcconfig
 DEVELOPMENT_TEAM = YOUR_TEAM_ID
 PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.yourname
-\`\`\`
+```
 
-Then build the \`WalkWrite\` scheme. The generated XCFramework is placed under the ignored \`.build/whisper/\` directory and is never overwritten by the script.
+Then build the `WalkWrite` scheme. The generated XCFramework is placed under the ignored `.build/whisper/` directory and is never overwritten by the script.
 
 Recommended verification commands on macOS:
 
-\`\`\`bash
+```bash
 swift test
 xcodebuild -project WalkWrite.xcodeproj -scheme WalkWrite \
   -destination 'platform=iOS Simulator,name=iPhone 16' build test
-\`\`\`
+```
 
 A simulator does not validate microphone routing, background/interruption behavior, Neural Engine/Metal memory pressure, or real-device performance.
 
@@ -115,7 +115,7 @@ does not verify installation, microphone behavior, or Whisper performance.
 
 ## Whisper model installation
 
-1. Download a multilingual GGML \`.bin\` model from the official [whisper.cpp model repository](https://huggingface.co/ggerganov/whisper.cpp).
+1. Download a multilingual GGML `.bin` model from the official [whisper.cpp model repository](https://huggingface.co/ggerganov/whisper.cpp).
 2. Save it in Files on the device.
 3. Open **Settings → Local Speech-to-Text → Import Whisper Model**.
 4. Confirm **STT Model Status: Installed**.
@@ -131,28 +131,28 @@ Local STT supports Auto Detect, Korean, English, Japanese, and Spanish selection
 
 The personal backend lives in [backend](backend/README.md) and exposes:
 
-- \`GET /api/status\`: authenticated configuration readiness; no transcript and no OpenAI call
-- \`POST /api/summarize\`: one logical operation returning title, summary, key points, and action items
+- `GET /api/status`: authenticated configuration readiness; no transcript and no OpenAI call
+- `POST /api/summarize`: one logical operation returning title, summary, key points, and action items
 
 Short transcripts make one OpenAI Responses API call. Inputs beyond the configured threshold are split chronologically, summarized in bounded chunks, and synthesized only when needed.
 
 Required Worker secrets/environment:
 
-- \`OPENAI_API_KEY\`
-- \`OPENAI_MODEL\`
-- \`APP_TOKEN\`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `APP_TOKEN`
 
-No model name is hard-coded as the runtime default. Consult the current [OpenAI model catalog](https://developers.openai.com/api/docs/models) when configuring \`OPENAI_MODEL\).
+No model name is hard-coded as the runtime default. Consult the current [OpenAI model catalog](https://developers.openai.com/api/docs/models) when configuring `OPENAI_MODEL\).
 
 ## Privacy
 
 Audio never goes to the AI backend. Only the saved edited transcript is sent, either after tapping **Generate AI Summary** or after enabling Automatic AI Summary and creating a new transcription.
 
-The Worker sets \`store: false\`, logs only request ID/status/latency/input character count/model/error category, and never logs the transcript. OpenAI platform data controls and retention are separate from this app; review the current [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) before use.
+The Worker sets `store: false`, logs only request ID/status/latency/input character count/model/error category, and never logs the transcript. OpenAI platform data controls and retention are separate from this app; review the current [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) before use.
 
 ## Verification performed on Windows
 
-\`\`\`text
+```text
 backend TypeScript typecheck: passed
 backend Node mock tests: 18 passed
 Cloudflare Worker dry-run bundle: passed
@@ -163,14 +163,16 @@ plist parse: passed
 Whisper build script bash syntax: passed
 IPA packaging script Bash parser: 0 syntax-error nodes
 GitHub workflows actionlint: 2 passed
+GitHub Xcode 16.4 unsigned device archive: passed
+Downloaded IPA structure and SHA-256 verification: passed
 Git diff whitespace check: passed
-\`\`\`
+```
 
-The syntax scan is not a Swift compile. See [Verification status](docs/VERIFICATION.md) for exact scope and remaining device cases.
+The local syntax scan is not compilation; GitHub Run #1 separately verified device Release compilation and linkage. See [Verification status](docs/VERIFICATION.md) for exact scope and remaining tests.
 
 ## Known limitations
 
-- Xcode/iOS compilation remains unverified until run on macOS.
+- Device Release compilation/linkage passed on GitHub macOS; simulator and unit/UI tests remain unverified.
 - Physical recording, interruptions, route changes, playback, model import, multilingual STT, long recordings, and memory use remain unverified.
 - The Cloudflare rate-limit bindings are per location and eventually consistent, so also configure OpenAI project budgets/limits.
 - The current recovery path preserves orphaned WAV audio but may not know its precise duration until playback opens it.
