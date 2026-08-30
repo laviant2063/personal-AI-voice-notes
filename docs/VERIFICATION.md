@@ -35,6 +35,11 @@ npm run build
 - Pinned whisper XCFramework device and simulator slices: built successfully
 - Downloaded IPA: ZIP/Payload, bundle ID, arm64 Mach-O, no signature command, and no bundled models verified
 - IPA SHA-256: 91c0190f63ed707e8f30aa216c6e9906e8fac7b1a7520bb1d0964ce91919c5ca
+- Cloudflare Worker deployed from commit 7515270 with Wrangler
+- Worker endpoint: https://personal-voice-notes.dazzo2063.workers.dev
+- Required Cloudflare secret names: 3/3 present; values not read or logged
+- Live unauthenticated boundary checks: 401/404/405, no-store, and request IDs pass
+- Real authenticated status and OpenAI summary calls remain unverified.
 
 Tree-sitter is not compilation and does not validate Swift types, actors, Apple SDK availability, or linkage.
 

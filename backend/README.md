@@ -40,6 +40,15 @@ npx wrangler deploy
 
 After deploying, enter the Worker HTTPS origin and the same APP_TOKEN in iOS Settings. A readiness check sends no transcript and makes no OpenAI call.
 
+Current personal deployment (2026-08-30):
+
+- Endpoint: **https://personal-voice-notes.dazzo2063.workers.dev**
+- Source deployment: Wrangler from commit **7515270**
+- Required secret names present: **OPENAI_API_KEY**, **OPENAI_MODEL**, **APP_TOKEN**
+- Configured model secret: **gpt-4.1-mini**
+- Verified live behavior without a token: **401 unauthorized**, **404 not_found**, **405 method_not_allowed**, **Cache-Control: no-store**, and request IDs
+- A real authenticated summary/OpenAI call has not been performed.
+
 ## API
 
 **GET /api/status** requires Authorization: Bearer APP_TOKEN and returns configured plus a request ID.
