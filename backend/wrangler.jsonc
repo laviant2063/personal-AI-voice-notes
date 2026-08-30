@@ -13,15 +13,18 @@
     "MAX_OUTPUT_TOKENS": "2000",
     "REQUEST_TIMEOUT_MS": "90000"
   },
+  "secrets": {
+    "required": ["OPENAI_API_KEY", "OPENAI_MODEL", "APP_TOKEN"]
+  },
   "ratelimits": [
     {
       "name": "SUMMARY_RATE_LIMITER",
-      "namespace_id": "1001",
+      "namespace_id": "2007472923",
       "simple": { "limit": 5, "period": 60 }
     },
     {
       "name": "OPENAI_CALL_RATE_LIMITER",
-      "namespace_id": "1002",
+      "namespace_id": "1093064132",
       "simple": { "limit": 20, "period": 60 }
     }
   ]

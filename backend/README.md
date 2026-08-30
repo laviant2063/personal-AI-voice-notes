@@ -25,7 +25,8 @@ npx wrangler secret put APP_TOKEN
 
 - Choose OPENAI_MODEL from the current [OpenAI model catalog](https://developers.openai.com/api/docs/models). It must support Responses and Structured Outputs.
 - Use a high-entropy APP_TOKEN of 32–512 supported characters. This provides basic endpoint protection, not strong identity.
-- Replace both rate-limit namespace_id values in wrangler.jsonc with distinct positive integers unique within your Cloudflare account before deployment.
+- The committed rate-limit namespace IDs were generated independently for this personal Worker. Generate new distinct positive IDs if this config is reused in another Cloudflare account.
+- The config declares all three secret names as required, so deployment fails closed when a required binding is missing.
 - Never put real values in examples, source, app code, logs, or fixtures.
 
 For local manual testing later, use ignored backend/.dev.vars and keep its values out of terminal output and screenshots.
