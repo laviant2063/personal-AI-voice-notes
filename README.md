@@ -1,160 +1,181 @@
-# WalkWrite - Voice Notes with On-Device AI
+# Personal AI Voice Notes
 
-<p align="center">
-  <img src="Images/AppIcon.png" width="128" alt="WalkWrite App Icon">
-</p>
+A personal iPhone/iPad voice-note app based on [WalkWrite](https://github.com/lbacaj/WalkWrite-opensource). It records audio locally, transcribes with an installed multilingual whisper.cpp model, lets you edit and search transcripts, and optionally sends the edited text to your own Cloudflare Worker for one structured AI result.
 
-<p align="center">
-  <a href="https://apps.apple.com/us/app/walkwrite/id6745560717">
-    <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="60">
-  </a>
-</p>
-
-WalkWrite is a voice note app that uses on-device Whisper 3.5 Turbo and Gwen 3 (but you could easily swap those models) to transcribe and enhance recordings on device. All processing happens locally on the device - no internet connection required, no data leaves the phone.
-
-**This open-source version serves as a template and example for iOS developers who want to integrate local AI models (Whisper & LLMs) into their own apps.** The full app is available on the [App Store](https://apps.apple.com/us/app/walkwrite/id6745560717).
-
-**Note**: This open-source version has no usage limits - all features are available without restrictions. The optional one time in-app purchase remains for users who wish to support development and updates.
-
-## Features
-
-- 🎙️ **High-quality voice recording** with real-time audio that is safely always saved on the users device.
-- 🤖 **On-device transcription** using OpenAI's Whisper (large-v3-turbo model)
-- ✨ **AI-powered enhancements** using Qwen-3 0.6B LLM:
-  - Grammar and punctuation correction
-  - Filler word removal
-  - Automatic summarization
-  - Key idea extraction
-- 🔒 **Complete privacy** - all processing happens locally
-- 📱 **Native iOS app** built with SwiftUI
-- 🎯 **Offline first** - works offline on an airplane or in the woods
-
-## Screenshots
-
-<div style="display: flex; overflow-x: auto;">
-  <img src="Images/Record.jpeg" width="200" alt="Recording Screen">
-  <img src="Images/NoteList.jpeg" width="200" alt="Notes List">
-  <img src="Images/Playback.jpeg" width="200" alt="Playback View">
-  <img src="Images/Search.jpeg" width="200" alt="Search">
-  <img src="Images/EmailTranscript.jpeg" width="200" alt="Export">
-</div>
-
-## Requirements
-
-- iOS 17.0+
-- iPhone with A12 Bionic chip or newer (for Neural Engine)
-- ~3GB free storage for models, App ships with the models but these could be easily made optional downloads and it could ship with smaller models
-- Xcode 15.0+
-
-## Building from Source
-
-1. Clone the repository:
-```bash
-git clone https://github.com/lbacaj/WalkWrite-opensource.git
-cd WalkWrite-opensource
-```
-
-2. Install Git LFS and pull the model files:
-```bash
-brew install git-lfs
-git lfs install
-git lfs pull
-```
-
-Alternatively, you can download the models directly from Hugging Face if you prefer.
-
-3. Build the whisper.cpp framework:
-```bash
-./build-whisper-xcframework.sh
-```
-
-4. Configure your development environment:
-```bash
-./setup-developer.sh
-```
-This will set up your development team and bundle identifier.
-
-5. Open the project in Xcode:
-```bash
-open WalkWrite.xcodeproj
-```
-
-6. Let Xcode resolve Swift Package dependencies (this may take a few minutes)
-
-7. Build and run on your device (simulator not recommended due to model performance)
+> Development status: the source and backend mock path are implemented. The repository was prepared on Windows, where Swift and Xcode are unavailable. An iOS build, simulator run, and physical-device validation have **not** been performed yet.
 
 ## Architecture
 
-WalkWrite uses a Swift architecture with:
+\`\`\`text
+AVAudioRecorder → app-owned WAV → durable Note metadata
+                                  ↓
+                   installed whisper.cpp GGML model
+                                  ↓
+                raw transcript + segments (immutable)
+                                  ↓
+                    edited transcript + revision
+                                  ↓ explicit request or opt-in event
+SwiftUI → AIController → AISummaryService → BackendAPIClient
+                                  ↓ HTTPS + APP_TOKEN
+Cloudflare Worker → OpenAI Responses API + strict JSON Schema
+                                  ↓
+       title + summary + key points + action items
+                                  ↓ revision/request-token guard
+                     atomic local JSON persistence
+\`\`\`
 
-- **SwiftUI** for the UI layer
-- **Swift Actors** for thread-safe model management
-- **whisper.cpp** for speech-to-text transcription
-- **MLX Swift** for running the Qwen LLM
-- **Core ML** for optimized on-device inference
+The iOS client never receives or stores \`OPENAI_API_KEY\`. The Worker has no note database and does not permanently store transcripts.
 
-### Key Components
+## What works offline
 
-- `WhisperEngine.swift` - Manages whisper.cpp transcription
-- `LLMEngine.swift` - Handles Qwen model inference via MLX
-- `RecorderViewModel.swift` - Recording logic and audio processing
-- `PostProcessor.swift` - Orchestrates the enhancement pipeline
-- `NoteStore.swift` - Persistence and data management
+- Recording, Pause, Resume, Stop, WAV storage, and playback
+- Installed-model whisper.cpp transcription
+- Raw/edited transcript storage and editing
+- Note persistence, deletion, action-item completion, lexical search
+- Search over AI title, edited transcript, summary, and key points
+- Opening notes after relaunch
 
-## Models
+First-time model provisioning may require internet. After a multilingual GGML model is imported, transcription uses the local whisper.cpp runtime.
 
-The app includes two AI models:
+Online-only functionality is limited to AI title, summary, key points, and action items. There is no cloud STT, account, payment, analytics, cloud note sync, semantic search, speaker diarization, translation pipeline, or local LLM.
 
-1. **Whisper Large-v3-turbo** (Q5_0 quantized, ~574MB)
-   - High-quality speech recognition
-   - Optimized for mobile devices
-   
-2. **Qwen-3 0.6B** (~1.4GB)
-   - Lightweight language model
-   - Grammar correction and text enhancement
+## Safety behavior
+
+- Note metadata is written before microphone capture starts. Stop finalizes it before STT.
+- Audio remains available when STT, networking, backend, or AI fails.
+- A corrupt note index becomes read-only; it is never silently replaced by an empty list.
+- Atomic writes keep the previous readable index as \`notes.backup.json\`.
+- Raw STT is captured once. Editing changes only \`editedTranscript\` and increments its revision.
+- An AI response must match the active request token and transcript revision.
+- Regeneration replaces old AI fields only after the entire new result validates.
+- Turning AI on does not upload past notes. Network reconnection has no upload callback.
+- Automatic AI Summary is OFF by default and applies only after a new local transcription is durably saved.
+- APP_TOKEN is stored in Keychain and is scoped to the configured HTTPS origin.
+
+See [Architecture and invariants](docs/ARCHITECTURE.md).
+
+## Requirements
+
+- macOS with Xcode 16.3+ and command-line tools
+- iOS/iPadOS 17.6+
+- CMake
+- Git submodules
+- A physical iPhone/iPad for final microphone, interruption, memory, and Whisper testing
+- Node.js 24+ for backend work
+
+The included framework/model LFS placeholders are not runtime assets. The app excludes them and reports a missing model instead of crashing.
+
+## Xcode setup
+
+\`\`\`bash
+git submodule update --init --depth 1 -- whisper.cpp
+./build-whisper-xcframework.sh
+cp Config.xcconfig.template Config.xcconfig
+open WalkWrite.xcodeproj
+\`\`\`
+
+Edit the ignored \`Config.xcconfig\`:
+
+\`\`\`xcconfig
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.yourname
+\`\`\`
+
+Then build the \`WalkWrite\` scheme. The generated XCFramework is placed under the ignored \`.build/whisper/\` directory and is never overwritten by the script.
+
+Recommended verification commands on macOS:
+
+\`\`\`bash
+swift test
+xcodebuild -project WalkWrite.xcodeproj -scheme WalkWrite \
+  -destination 'platform=iOS Simulator,name=iPhone 16' build test
+\`\`\`
+
+A simulator does not validate microphone routing, background/interruption behavior, Neural Engine/Metal memory pressure, or real-device performance.
+
+The repository also includes **.github/workflows/ios-validation.yml**. It
+performs the pinned framework build, portable core tests, simulator app build,
+and iOS unit tests on a macOS runner. It has not been run from this uncommitted
+local checkout.
+
+### GitHub unsigned IPA artifact
+
+After these changes are committed to a writable GitHub repository:
+
+1. Open **Actions → Build unsigned IPA → Run workflow**.
+2. Enter a bundle identifier prefix such as **com.yourname.personal**.
+3. Download **PersonalVoiceNotes-unsigned.ipa** from the completed run.
+
+The workflow builds an arm64 device Release archive, verifies that it is
+unsigned, packages a standard Payload directory, validates the ZIP structure,
+records its SHA-256 in the job summary, and uploads the IPA directly for 14
+days. An unsigned IPA cannot be installed directly on an iPhone; re-sign it
+with AltStore, Sideloadly, or your own Apple certificate/profile. This workflow
+does not verify installation, microphone behavior, or Whisper performance.
+
+## Whisper model installation
+
+1. Download a multilingual GGML \`.bin\` model from the official [whisper.cpp model repository](https://huggingface.co/ggerganov/whisper.cpp).
+2. Save it in Files on the device.
+3. Open **Settings → Local Speech-to-Text → Import Whisper Model**.
+4. Confirm **STT Model Status: Installed**.
+5. Record a short sample in Korean, English, Japanese, and Spanish.
+
+The importer copies into the app container without replacing an existing good model. It rejects Git LFS pointers, truncated headers, and English-only model headers. Header validation is not an inference, quality, or memory test. A smaller multilingual model is the safer first device test.
+
+## Language policy
+
+Local STT supports Auto Detect, Korean, English, Japanese, and Spanish selections. AI output is instructed to follow the transcript's primary language and preserve useful mixed-language terminology. No separate translation pipeline exists. No language-quality test was performed in this Windows environment.
+
+## Backend
+
+The personal backend lives in [backend](backend/README.md) and exposes:
+
+- \`GET /api/status\`: authenticated configuration readiness; no transcript and no OpenAI call
+- \`POST /api/summarize\`: one logical operation returning title, summary, key points, and action items
+
+Short transcripts make one OpenAI Responses API call. Inputs beyond the configured threshold are split chronologically, summarized in bounded chunks, and synthesized only when needed.
+
+Required Worker secrets/environment:
+
+- \`OPENAI_API_KEY\`
+- \`OPENAI_MODEL\`
+- \`APP_TOKEN\`
+
+No model name is hard-coded as the runtime default. Consult the current [OpenAI model catalog](https://developers.openai.com/api/docs/models) when configuring \`OPENAI_MODEL\).
 
 ## Privacy
 
-WalkWrite is designed with privacy as the top priority:
+Audio never goes to the AI backend. Only the saved edited transcript is sent, either after tapping **Generate AI Summary** or after enabling Automatic AI Summary and creating a new transcription.
 
-- ✅ All AI processing happens on-device
-- ✅ No internet connection required for core features
-- ✅ No telemetry or analytics
-- ✅ Audio files stored locally in app sandbox
-- ✅ Export only when explicitly requested by user
+The Worker sets \`store: false\`, logs only request ID/status/latency/input character count/model/error category, and never logs the transcript. OpenAI platform data controls and retention are separate from this app; review the current [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) before use.
 
-## Using as a Reference
+## Verification performed on Windows
 
-This project is designed as a reference implementation for developers who want to:
-- See how to integrate whisper.cpp in an iOS app
-- Learn how to run local LLMs with MLX Swift
-- Build privacy-focused AI features without servers
+\`\`\`text
+backend TypeScript typecheck: passed
+backend Node mock tests: 18 passed
+Cloudflare Worker dry-run bundle: passed
+npm audit: 0 vulnerabilities
+Swift tree-sitter syntax scan: 32 files, 0 syntax-error nodes
+Xcode project OpenStep parse: passed
+plist parse: passed
+Whisper build script bash syntax: passed
+IPA packaging script Bash parser: 0 syntax-error nodes
+GitHub workflows actionlint: 2 passed
+Git diff whitespace check: passed
+\`\`\`
 
-Feel free to use any code from this project in your own apps!
+The syntax scan is not a Swift compile. See [Verification status](docs/VERIFICATION.md) for exact scope and remaining device cases.
+
+## Known limitations
+
+- Xcode/iOS compilation remains unverified until run on macOS.
+- Physical recording, interruptions, route changes, playback, model import, multilingual STT, long recordings, and memory use remain unverified.
+- The Cloudflare rate-limit bindings are per location and eventually consistent, so also configure OpenAI project budgets/limits.
+- The current recovery path preserves orphaned WAV audio but may not know its precise duration until playback opens it.
+- There is no model downloader; import is a deliberate user action.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Use as a Template
-
-This project is designed to help iOS developers learn how to:
-
-- Integrate whisper.cpp for on-device speech recognition
-- Run small LLMs locally using MLX Swift
-- Manage memory efficiently when running multiple AI models
-- Build privacy-first AI features without server dependencies
-- Handle background processing for long-running AI tasks
-
-Feel free to use this code as a starting point for your own AI-powered iOS apps!
-
-## Acknowledgments
-
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) by Georgi Gerganov
-- [MLX Swift](https://github.com/ml-explore/mlx-swift) by Apple
-- [Qwen](https://github.com/QwenLM/Qwen) by Alibaba Cloud
-- Not fully "vibe coded" but AI did help build this, so it deserves acknowledgment
-
-## Author
-
-Created by [Louie Bacaj](https://louiebacaj.com/)
+WalkWrite is MIT licensed. The pinned whisper.cpp submodule is also MIT licensed. See [LICENSE](LICENSE) and [whisper.cpp/LICENSE](whisper.cpp/LICENSE).

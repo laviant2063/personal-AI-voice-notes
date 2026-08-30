@@ -1,92 +1,84 @@
 #!/bin/bash
-
-# Build script for whisper.cpp XCFramework
-# This creates a universal framework that works on iOS devices and simulators
-
-set -e
-
-echo "Building whisper.cpp XCFramework..."
-
-# Clone whisper.cpp if it doesn't exist
-if [ ! -d "whisper.cpp" ]; then
-    echo "Cloning whisper.cpp..."
-    git clone https://github.com/ggerganov/whisper.cpp.git
+# Build only the existing pinned Whisper dependency for iPhone/iPad.
+# The result contains all ggml libraries and the Clang module map.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd -P)"
+cd "$ROOT"
+PIN="13d92d08ae26031545921243256aaaf0ee057943"
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "macOS and Xcode are required; no iOS build was performed." >&2
+    exit 1
 fi
+for tool in git cmake xcodebuild xcrun libtool; do
+    command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }
+done
+git submodule update --init --depth 1 -- whisper.cpp
+if [[ "$(git -C whisper.cpp rev-parse HEAD)" != "$PIN" ]]; then
+    echo "Whisper revision differs from the audited pin; refusing to build." >&2
+    exit 1
+fi
+if [[ -n "$(git -C whisper.cpp status --porcelain --untracked-files=no)" ]]; then
+    echo "Whisper has tracked modifications; review them before building." >&2
+    exit 1
+fi
+BUILD="$ROOT/.build/whisper"
+OUTPUT="$BUILD/whisper.xcframework"
+if [[ -e "$OUTPUT" ]]; then
+    echo "Existing framework preserved at $OUTPUT"
+    echo "Use a fresh clone or explicitly archive that generated output before rebuilding."
+    exit 1
+fi
+mkdir -p "$BUILD/headers"
+cp "$ROOT/whisper.cpp/include/whisper.h" "$BUILD/headers/"
+cp "$ROOT/whisper.cpp/ggml/include/"*.h "$BUILD/headers/"
+cp "$ROOT/whisper.cpp/LICENSE" "$BUILD/WHISPER-LICENSE"
+cat > "$BUILD/headers/module.modulemap" <<'MODULE'
+module whisper {
+    header "whisper.h"
+    export *
+    link "c++"
+    link framework "Accelerate"
+    link framework "Metal"
+    link framework "Foundation"
+}
+MODULE
 
-cd whisper.cpp
-
-# Clean previous builds
-rm -rf build-ios-device build-ios-sim build-xcframework
-
-# Build for iOS device
-echo "Building for iOS device..."
-cmake -B build-ios-device \
-    -DCMAKE_SYSTEM_NAME=iOS \
-    -DCMAKE_OSX_ARCHITECTURES=arm64 \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DWHISPER_BUILD_TESTS=OFF \
-    -DWHISPER_BUILD_EXAMPLES=OFF \
-    -DWHISPER_BUILD_SERVER=OFF \
-    -DGGML_METAL=ON \
-    -DWHISPER_COREML=ON \
-    -DWHISPER_COREML_ALLOW_FALLBACK=ON
-
-cmake --build build-ios-device --config Release
-
-# Build for iOS simulator
-echo "Building for iOS simulator..."
-cmake -B build-ios-sim \
-    -DCMAKE_SYSTEM_NAME=iOS \
-    -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
-    -DCMAKE_OSX_SYSROOT=iphonesimulator \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DWHISPER_BUILD_TESTS=OFF \
-    -DWHISPER_BUILD_EXAMPLES=OFF \
-    -DWHISPER_BUILD_SERVER=OFF \
-    -DGGML_METAL=OFF \
-    -DWHISPER_COREML=ON \
-    -DWHISPER_COREML_ALLOW_FALLBACK=ON
-
-cmake --build build-ios-sim --config Release
-
-# Find the static libraries
-DEVICE_LIB=$(find build-ios-device -name "libwhisper.a" -type f | head -1)
-SIM_LIB=$(find build-ios-sim -name "libwhisper.a" -type f | head -1)
-
-if [ -z "$DEVICE_LIB" ] || [ -z "$SIM_LIB" ]; then
-    echo "Error: Could not find static libraries. Checking for alternatives..."
-    # Try to create static libraries from dynamic ones if needed
-    if [ -f "build-ios-device/src/libwhisper.dylib" ]; then
-        echo "Converting dynamic libraries to static..."
-        # This is a fallback - ideally we want cmake to build static libs directly
-        libtool -static -o build-ios-device/libwhisper.a \
-            build-ios-device/src/libwhisper.dylib \
-            build-ios-device/ggml/src/libggml.dylib 2>/dev/null || true
-        
-        libtool -static -o build-ios-sim/libwhisper.a \
-            build-ios-sim/src/libwhisper.dylib \
-            build-ios-sim/ggml/src/libggml.dylib 2>/dev/null || true
+build_slice() {
+    local sdk="$1"
+    local architectures="$2"
+    local destination="$BUILD/$sdk"
+    cmake -S "$ROOT/whisper.cpp" -B "$destination" -G Xcode \
+        -DCMAKE_SYSTEM_NAME=iOS \
+        -DCMAKE_OSX_SYSROOT="$sdk" \
+        -DCMAKE_OSX_ARCHITECTURES="$architectures" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=17.6 \
+        -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DWHISPER_BUILD_TESTS=OFF \
+        -DWHISPER_BUILD_EXAMPLES=OFF \
+        -DWHISPER_BUILD_SERVER=OFF \
+        -DWHISPER_COREML=OFF \
+        -DGGML_METAL=ON \
+        -DGGML_METAL_EMBED_LIBRARY=ON \
+        -DGGML_BLAS=ON \
+        -DGGML_OPENMP=OFF \
+        -DGGML_NATIVE=OFF
+    cmake --build "$destination" --config Release -- -quiet
+    local libraries=()
+    while IFS= read -r library; do
+        libraries+=("$library")
+    done < <(find "$destination" -type f -path "*/Release-$sdk/*" -name 'lib*.a')
+    if [[ ${#libraries[@]} -lt 4 ]]; then
+        echo "Expected whisper and ggml static libraries were not all produced." >&2
+        exit 1
     fi
-    
-    DEVICE_LIB="build-ios-device/libwhisper.a"
-    SIM_LIB="build-ios-sim/libwhisper.a"
-fi
+    libtool -static -o "$BUILD/whisper-$sdk.a" "${libraries[@]}"
+}
 
-echo "Device lib: $DEVICE_LIB"
-echo "Simulator lib: $SIM_LIB"
-
-# Create XCFramework
-echo "Creating XCFramework..."
+build_slice iphoneos arm64
+build_slice iphonesimulator "arm64;x86_64"
 xcodebuild -create-xcframework \
-    -library "$DEVICE_LIB" -headers include \
-    -library "$SIM_LIB" -headers include \
-    -output ../whisper.xcframework
-
-cd ..
-
-echo "✅ whisper.xcframework built successfully!"
-echo "Add whisper.xcframework to your Xcode project to use it."
+    -library "$BUILD/whisper-iphoneos.a" -headers "$BUILD/headers" \
+    -library "$BUILD/whisper-iphonesimulator.a" -headers "$BUILD/headers" \
+    -output "$OUTPUT"
+echo "Built $OUTPUT. This is not an app build or a physical-device test."

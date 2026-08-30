@@ -1,38 +1,23 @@
 import Foundation
-
 #if canImport(UIKit)
 import UIKit
 #endif
 
-/// Helper that builds the shareable artefacts (plain body text + `.txt` file)
-/// for a given `Note`'s transcript.
+/// Explicit user export. Edited text remains the main content of every export.
 enum TranscriptSharing {
-
-    /// Returns tuple `(bodyText, fileURL)` where:
-    ///  - `bodyText` is the full transcript – ready for Mail body or Messages bubble.
-    ///  - `fileURL`  is a temporary text file that contains the transcript with per-word time-stamps.
-    /// The caller is responsible for deleting the file afterwards if desired.
     static func makeItems(for note: Note) throws -> (String, URL) {
-        // 1. Body text: just return the raw transcript string.
-        let body = note.transcript
-
-        // 2. Build timestamped lines (one per word) e.g. [00:03.42] Hello
-        let lines: String = note.words.map { word in
-            let minutes = Int(word.start) / 60
-            let seconds = Int(word.start) % 60
-            let fraction = Int((word.start - floor(word.start)) * 100) // centiseconds
-            return String(format: "[%02d:%02d.%02d] %@", minutes, seconds, fraction, word.word)
-        }.joined(separator: "\n")
-
-        // If there are no word-level timestamps fall back to single block
-        let txtContent = lines.isEmpty ? body : lines
-
-        // 3. Write to a temp file
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent("VoiceMemoTranscript.txt")
-        try txtContent.write(to: fileURL, atomically: true, encoding: String.Encoding.utf8)
-
-        return (body, fileURL)
+        let body = note.editedTranscript
+        var content = body
+        if note.editedTranscript == note.rawTranscript && !note.transcriptSegments.isEmpty {
+            let lines = note.transcriptSegments.map {
+                "[\($0.startTime.mmSS)] \($0.text)"
+            }.joined(separator: "\n")
+            content += "\n\nOriginal local STT timestamps\n" + lines
+        }
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceNote-\(UUID().uuidString)").appendingPathExtension("txt")
+        try content.write(to: file, atomically: true, encoding: .utf8)
+        return (body, file)
     }
 }
 

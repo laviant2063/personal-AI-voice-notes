@@ -1,35 +1,30 @@
 import Foundation
 import Combine
 
+/// UI state only. WhisperEngine owns the synchronous admission gate and its context.
 @MainActor
-public final class WhisperStateManager: ObservableObject { // Made public
-    public static let shared = WhisperStateManager() // Made public
+public final class WhisperStateManager: ObservableObject {
+    public static let shared = WhisperStateManager()
 
-    @Published public private(set) var isTranscribing: Bool = false // Getter is public
-    @Published public private(set) var isReleasingContext: Bool = false // Getter is public
+    @Published public private(set) var isTranscribing = false
+    @Published public private(set) var isReleasingContext = false
+    private var activeJobID: UUID?
 
-    private init() {} // Private init for singleton
+    private init() {}
 
-    // --- Methods to be called by WhisperEngine ---
-
-    public func setIsTranscribing(_ status: Bool) async { // Made public
-        // Since this whole class is @MainActor, direct assignment is fine.
-        // The async nature is for the caller on a different actor.
-        isTranscribing = status
-        Foundation.NSLog("WhisperStateManager: isTranscribing set to \(status).")
+    func beginJob(_ id: UUID) {
+        activeJobID = id
+        isTranscribing = true
     }
 
-    public func setIsReleasingContext(_ status: Bool) async { // Made public
-        // Since this whole class is @MainActor, direct assignment is fine.
-        isReleasingContext = status
-        Foundation.NSLog("WhisperStateManager: isReleasingContext set to \(status).")
+    func finishJob(_ id: UUID) {
+        guard activeJobID == id else { return }
+        activeJobID = nil
+        isTranscribing = false
+        isReleasingContext = false
     }
 
-    // --- Method for UI to check ---
-    
-    public func canAcceptNewJob() -> Bool { // Made public
-        let canAccept = !isTranscribing && !isReleasingContext
-        Foundation.NSLog("WhisperStateManager: Checking if can accept new job. Transcribing: \(isTranscribing), Releasing: \(isReleasingContext). Result: \(canAccept)")
-        return canAccept
+    public func canAcceptNewJob() -> Bool {
+        !isTranscribing && !isReleasingContext
     }
 }

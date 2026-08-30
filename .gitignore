@@ -53,3 +53,15 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Local verification and backend build outputs
+.tools/
+backend/node_modules/
+backend/.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+*.xcresult/

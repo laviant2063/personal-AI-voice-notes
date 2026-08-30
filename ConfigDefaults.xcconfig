@@ -1,0 +1,4 @@
+// Public defaults. Optional user signing configuration is ignored by Git.
+DEVELOPMENT_TEAM =
+PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.example
+#include? "Config.xcconfig"

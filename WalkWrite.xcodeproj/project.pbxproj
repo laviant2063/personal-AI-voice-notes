@@ -7,18 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		38345FE22DCBA7E1009FCA24 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 38345FE12DCBA7E1009FCA24 /* StoreKit.framework */; };
 		3899DC882DCB013B00F77E45 /* whisper.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3899DC842DCAFF2200F77E45 /* whisper.xcframework */; };
-		3899DC892DCB013B00F77E45 /* whisper.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3899DC842DCAFF2200F77E45 /* whisper.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		38F2F1B52DCE50EB0036D42E /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1B42DCE50EB0036D42E /* MLX */; };
-		38F2F1B72DCE50EB0036D42E /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1B62DCE50EB0036D42E /* MLXFast */; };
-		38F2F1B92DCE50EB0036D42E /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1B82DCE50EB0036D42E /* MLXFFT */; };
-		38F2F1BB2DCE50EB0036D42E /* MLXLinalg in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1BA2DCE50EB0036D42E /* MLXLinalg */; };
-		38F2F1BD2DCE50EB0036D42E /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1BC2DCE50EB0036D42E /* MLXNN */; };
-		38F2F1BF2DCE50EB0036D42E /* MLXOptimizers in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1BE2DCE50EB0036D42E /* MLXOptimizers */; };
-		38F2F1C12DCE50EB0036D42E /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1C02DCE50EB0036D42E /* MLXRandom */; };
-		38F2F1C62DCE51900036D42E /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1C52DCE51900036D42E /* MLXLLM */; };
-		38F2F1C82DCE51900036D42E /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 38F2F1C72DCE51900036D42E /* MLXLMCommon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,7 +34,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				3899DC892DCB013B00F77E45 /* whisper.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -53,8 +41,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		38345FE12DCBA7E1009FCA24 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
-		3899DC842DCAFF2200F77E45 /* whisper.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = whisper.xcframework; path = whisper.xcframework; sourceTree = "<group>"; };
+		ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ConfigDefaults.xcconfig; sourceTree = "<group>"; };
+		3899DC842DCAFF2200F77E45 /* whisper.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = whisper.xcframework; path = ".build/whisper/whisper.xcframework"; sourceTree = "<group>"; };
 		38D510002DCACD1400933F27 /* WalkWrite.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WalkWrite.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		38D510122DCACD1500933F27 /* WalkWriteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WalkWriteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		38D5101C2DCACD1500933F27 /* WalkWriteUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WalkWriteUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,12 +53,16 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				"ggml-large-v3-turbo-q5_0.bin",
+				"ggml-large-v3-turbo-encoder.mlmodelc",
 			);
 			target = 38D50FFF2DCACD1400933F27 /* WalkWrite */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		ABCA12ABCA12ABCA12ABCA12 /* WalkWriteTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = WalkWriteTests; sourceTree = "<group>"; };
+		ABCA13ABCA13ABCA13ABCA13 /* WalkWriteUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = WalkWriteUITests; sourceTree = "<group>"; };
 		38345FE92DCBC9ED009FCA24 /* Images */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Images;
@@ -91,17 +83,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				38F2F1B92DCE50EB0036D42E /* MLXFFT in Frameworks */,
-				38F2F1BB2DCE50EB0036D42E /* MLXLinalg in Frameworks */,
-				38F2F1B52DCE50EB0036D42E /* MLX in Frameworks */,
 				3899DC882DCB013B00F77E45 /* whisper.xcframework in Frameworks */,
-				38F2F1BF2DCE50EB0036D42E /* MLXOptimizers in Frameworks */,
-				38F2F1B72DCE50EB0036D42E /* MLXFast in Frameworks */,
-				38F2F1BD2DCE50EB0036D42E /* MLXNN in Frameworks */,
-				38F2F1C12DCE50EB0036D42E /* MLXRandom in Frameworks */,
-				38F2F1C62DCE51900036D42E /* MLXLLM in Frameworks */,
-				38F2F1C82DCE51900036D42E /* MLXLMCommon in Frameworks */,
-				38345FE22DCBA7E1009FCA24 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,6 +108,9 @@
 			isa = PBXGroup;
 			children = (
 				38D510022DCACD1400933F27 /* WalkWrite */,
+				ABCA12ABCA12ABCA12ABCA12 /* WalkWriteTests */,
+				ABCA13ABCA13ABCA13ABCA13 /* WalkWriteUITests */,
+				ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */,
 				38D511192DCAEFAA00933F27 /* Frameworks */,
 				38D510012DCACD1400933F27 /* Products */,
 				38345FE92DCBC9ED009FCA24 /* Images */,
@@ -145,7 +130,6 @@
 		38D511192DCAEFAA00933F27 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				38345FE12DCBA7E1009FCA24 /* StoreKit.framework */,
 				3899DC842DCAFF2200F77E45 /* whisper.xcframework */,
 			);
 			name = Frameworks;
@@ -168,20 +152,11 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				38345FE92DCBC9ED009FCA24 /* Images */,
 				38D510022DCACD1400933F27 /* WalkWrite */,
 			);
 			name = WalkWrite;
 			packageProductDependencies = (
-				38F2F1B42DCE50EB0036D42E /* MLX */,
-				38F2F1B62DCE50EB0036D42E /* MLXFast */,
-				38F2F1B82DCE50EB0036D42E /* MLXFFT */,
-				38F2F1BA2DCE50EB0036D42E /* MLXLinalg */,
-				38F2F1BC2DCE50EB0036D42E /* MLXNN */,
-				38F2F1BE2DCE50EB0036D42E /* MLXOptimizers */,
-				38F2F1C02DCE50EB0036D42E /* MLXRandom */,
-				38F2F1C52DCE51900036D42E /* MLXLLM */,
-				38F2F1C72DCE51900036D42E /* MLXLMCommon */,			);
+			);
 			productName = WalkWrite;
 			productReference = 38D510002DCACD1400933F27 /* WalkWrite.app */;
 			productType = "com.apple.product-type.application";
@@ -199,6 +174,7 @@
 			dependencies = (
 				38D510142DCACD1500933F27 /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (ABCA12ABCA12ABCA12ABCA12 /* WalkWriteTests */,);
 			name = WalkWriteTests;
 			packageProductDependencies = (
 			);
@@ -219,6 +195,7 @@
 			dependencies = (
 				38D5101E2DCACD1500933F27 /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (ABCA13ABCA13ABCA13ABCA13 /* WalkWriteUITests */,);
 			name = WalkWriteUITests;
 			packageProductDependencies = (
 			);
@@ -259,8 +236,6 @@
 			mainGroup = 38D50FF72DCACD1400933F27;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */,
-				38F2F1C22DCE51080036D42E /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 38D510012DCACD1400933F27 /* Products */;
@@ -338,6 +313,7 @@
 /* Begin XCBuildConfiguration section */
 		38D510242DCACD1500933F27 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -371,7 +347,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 2D52C35LVS;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -389,7 +364,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -402,6 +377,7 @@
 		};
 		38D510252DCACD1500933F27 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -435,7 +411,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 2D52C35LVS;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -447,7 +422,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -459,19 +434,19 @@
 		};
 		38D510272DCACD1500933F27 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = BDV2K75RT5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WalkWrite/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Walk & Write";
+				INFOPLIST_KEY_CFBundleDisplayName = "Voice Notes";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Walk & Write needs access to your microphone to record voice notes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Notes needs microphone access to record audio on this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -483,7 +458,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.motivationstack.walkwrite;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).voicenotes";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -494,19 +469,19 @@
 		};
 		38D510282DCACD1500933F27 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = BDV2K75RT5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WalkWrite/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Walk & Write";
+				INFOPLIST_KEY_CFBundleDisplayName = "Voice Notes";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Walk & Write needs access to your microphone to record voice notes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Notes needs microphone access to record audio on this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -518,7 +493,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.motivationstack.walkwrite;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).voicenotes";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -529,15 +504,15 @@
 		};
 		38D5102A2DCACD1500933F27 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2D52C35LVS;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = MotivationStackLLC.WalkWriteTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).voicenotes.tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -548,15 +523,15 @@
 		};
 		38D5102B2DCACD1500933F27 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2D52C35LVS;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = MotivationStackLLC.WalkWriteTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).voicenotes.tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -567,13 +542,13 @@
 		};
 		38D5102D2DCACD1500933F27 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2D52C35LVS;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = MotivationStackLLC.WalkWriteUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).voicenotes.uitests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -584,13 +559,13 @@
 		};
 		38D5102E2DCACD1500933F27 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = ABCA11ABCA11ABCA11ABCA11 /* ConfigDefaults.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2D52C35LVS;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = MotivationStackLLC.WalkWriteUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).voicenotes.uitests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -640,72 +615,9 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.20.0;
-			};
-		};
-		38F2F1C22DCE51080036D42E /* XCRemoteSwiftPackageReference "mlx-swift-examples" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-examples";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.21.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 
-/* Begin XCSwiftPackageProductDependency section */
-		38F2F1B42DCE50EB0036D42E /* MLX */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLX;
-		};
-		38F2F1B62DCE50EB0036D42E /* MLXFast */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLXFast;
-		};
-		38F2F1B82DCE50EB0036D42E /* MLXFFT */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLXFFT;
-		};
-		38F2F1BA2DCE50EB0036D42E /* MLXLinalg */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLXLinalg;
-		};
-		38F2F1BC2DCE50EB0036D42E /* MLXNN */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLXNN;
-		};
-		38F2F1BE2DCE50EB0036D42E /* MLXOptimizers */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLXOptimizers;
-		};
-		38F2F1C02DCE50EB0036D42E /* MLXRandom */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38AD73852DCE4C3700418917 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLXRandom;
-		};
-		38F2F1C52DCE51900036D42E /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38F2F1C22DCE51080036D42E /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
-			productName = MLXLLM;
-		};
-		38F2F1C72DCE51900036D42E /* MLXLMCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 38F2F1C22DCE51080036D42E /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
-			productName = MLXLMCommon;
-		};
-/* End XCSwiftPackageProductDependency section */
+
+
 	};
 	rootObject = 38D50FF82DCACD1400933F27 /* Project object */;
 }

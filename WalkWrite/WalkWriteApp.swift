@@ -1,41 +1,38 @@
-//
-//  WalkWriteApp.swift
-//  WalkWrite
-//
-
 import SwiftUI
-import StoreKit // Import StoreKit for Transaction
-import Foundation // Add Foundation just in case
 
 @main
+@MainActor
 struct WalkWriteApp: App {
-
-    @State private var store = NoteStore()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var store: NoteStore
+    @State private var settings: AppSettings
+    @State private var network: NetworkMonitor
+    @State private var ai: AIController
 
     init() {
-        // Ensure the application document directory exists early so subsequent
-        // file writes never throw.
-        _ = AppFolders.notes
-
-        // Perform initial purchase manager setup (optional, but good practice)
-        // This ensures the shared instance is created early.
-        _ = PurchaseManager.shared
+        let store = NoteStore()
+        let settings = AppSettings()
+        let network = NetworkMonitor()
+        let ai = AIController(store: store, settings: settings, network: network)
+        store.onTranscriptionSaved = { [weak ai] id in ai?.transcriptSaved(noteID: id) }
+        _store = State(initialValue: store)
+        _settings = State(initialValue: settings)
+        _network = State(initialValue: network)
+        _ai = State(initialValue: ai)
     }
 
     var body: some Scene {
         WindowGroup {
             NotesListView()
                 .environment(store)
-                // Intentionally **no** automatic enhancement resume. Users can
-                // trigger generation from the Note detail screen to avoid
-                // background jobs that may surprise them or exceed memory.
-                .task { // Add task to listen for transaction updates
-                    // Start listening for transaction updates
-                    for await update in Transaction.updates {
-                        // Handle the transaction update using the PurchaseManager
-                        await PurchaseManager.shared.handleTransactionUpdate(update)
-                    }
+                .environment(settings)
+                .environment(network)
+                .environment(ai)
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background { ai.cancelAll() }
+                    if phase == .active { settings.refreshTokenStatus() }
                 }
+                // No relaunch, foreground, or network reconnection upload hook.
         }
     }
 }

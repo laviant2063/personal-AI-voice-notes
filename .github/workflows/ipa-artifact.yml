@@ -1,0 +1,100 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_identifier_prefix:
+        description: Bundle identifier prefix, without .voicenotes
+        required: true
+        default: com.example.personal
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ipa
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      BUNDLE_PREFIX: ${{ inputs.bundle_identifier_prefix }}
+    steps:
+      - name: Check out source and pinned submodule
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          lfs: false
+          persist-credentials: false
+
+      - name: Validate build input and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix_length="$(printf %s "$BUNDLE_PREFIX" | wc -c | tr -d ' ')"
+          if [[ "$prefix_length" -gt 100 || ! "$BUNDLE_PREFIX" =~ ^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+$ || "$BUNDLE_PREFIX" == *..* ]]; then
+            echo "Invalid bundle identifier prefix." >&2
+            exit 1
+          fi
+          xcodebuild -version
+          python3 - <<'PY'
+          import re
+          import subprocess
+          version = subprocess.check_output(["xcodebuild", "-version"], text=True).splitlines()[0]
+          match = re.search(r"(\d+)\.(\d+)", version)
+          if not match or tuple(map(int, match.groups())) < (16, 3):
+              raise SystemExit("Xcode 16.3 or newer is required")
+          PY
+          command -v cmake >/dev/null || brew install cmake
+
+      - name: Build pinned whisper XCFramework
+        shell: bash
+        run: ./build-whisper-xcframework.sh
+
+      - name: Archive unsigned device app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .build/ipa
+          xcodebuild \
+            -project WalkWrite.xcodeproj \
+            -scheme WalkWrite \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/.build/ipa/VoiceNotes.xcarchive" \
+            PRODUCT_BUNDLE_IDENTIFIER_PREFIX="$BUNDLE_PREFIX" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            archive
+
+      - name: Verify app and package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$PWD/.build/ipa/VoiceNotes.xcarchive/Products/Applications/WalkWrite.app"
+          [[ -d "$app" ]] || { echo "Archived .app is missing." >&2; exit 1; }
+          identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+          [[ "$identifier" == "$BUNDLE_PREFIX.voicenotes" ]] || {
+            echo "Unexpected bundle identifier: $identifier" >&2
+            exit 1
+          }
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          [[ -x "$app/$executable" ]] || { echo "App executable is missing." >&2; exit 1; }
+          [[ ! -e "$app/_CodeSignature" ]] || { echo "Expected an unsigned app." >&2; exit 1; }
+          bash ./scripts/package-unsigned-ipa.sh \
+            "$app" "$PWD/.build/ipa/PersonalVoiceNotes-unsigned.ipa"
+          digest="$(shasum -a 256 .build/ipa/PersonalVoiceNotes-unsigned.ipa | awk '{print $1}')"
+          echo "Unsigned IPA SHA-256: $digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA as a direct artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: .build/ipa/PersonalVoiceNotes-unsigned.ipa
+          archive: false
+          if-no-files-found: error
+          retention-days: 14

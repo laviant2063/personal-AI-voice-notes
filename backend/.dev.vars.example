@@ -1,0 +1,4 @@
+# Examples contain no credentials. Supply real values only on the backend later.
+OPENAI_API_KEY=
+OPENAI_MODEL=
+APP_TOKEN=

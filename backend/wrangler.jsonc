@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "personal-voice-notes",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-28",
+  "send_metrics": false,
+  "observability": { "enabled": false },
+  "vars": {
+    "MAX_BODY_BYTES": "524288",
+    "MAX_TRANSCRIPT_CHARS": "120000",
+    "DIRECT_TRANSCRIPT_CHARS": "16000",
+    "MAX_CHUNKS": "8",
+    "MAX_OUTPUT_TOKENS": "2000",
+    "REQUEST_TIMEOUT_MS": "90000"
+  },
+  "ratelimits": [
+    {
+      "name": "SUMMARY_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      "name": "OPENAI_CALL_RATE_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 20, "period": 60 }
+    }
+  ]
+}
