@@ -38,6 +38,7 @@ npm run build
 - Cloudflare Worker deployed from commit 7515270 with Wrangler
 - Worker endpoint: https://personal-voice-notes.dazzo2063.workers.dev
 - Required Cloudflare secret names: 3/3 present; values not read or logged
+- Cloudflare OPENAI_MODEL secret configured as gpt-5.6-sol; API model access still requires an authenticated live summary test
 - Live unauthenticated boundary checks: 401/404/405, no-store, and request IDs pass
 - Real authenticated status and OpenAI summary calls remain unverified.
 
