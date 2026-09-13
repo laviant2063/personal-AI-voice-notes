@@ -68,9 +68,6 @@ final class AudioSafetyTests: XCTestCase {
             AVLinearPCMIsFloatKey: false,
             AVLinearPCMIsBigEndianKey: false
         ]
-        var file: AVAudioFile? = try AVAudioFile(
-            forWriting: url, settings: settings,
-            commonFormat: .pcmFormatFloat32, interleaved: false)
         let input = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
         input.frameLength = 48_000
         let channels = try XCTUnwrap(input.floatChannelData)
@@ -79,8 +76,12 @@ final class AudioSafetyTests: XCTestCase {
             channels[0][frame] = sample
             channels[1][frame] = -sample
         }
-        try XCTUnwrap(file).write(from: input)
-        file = nil // Finalize the WAV header before the reader opens it.
+        try autoreleasepool {
+            let file = try AVAudioFile(
+                forWriting: url, settings: settings,
+                commonFormat: .pcmFormatFloat32, interleaved: false)
+            try file.write(from: input)
+        } // Finalize the WAV header before the reader opens it.
 
         var converted: [Float] = []
         try WhisperAudioChunkReader.read(audioFileURL: url) { samples, _ in

@@ -187,7 +187,6 @@ public actor WhisperEngine {
 enum WhisperAudioChunkReader {
     static let sampleRate = 16_000.0
     private static let chunkFrames = 30 * 16_000
-    private static let sourceBufferCapacity: AVAudioFrameCount = 32_768
 
     static func read(
         audioFileURL: URL,
@@ -210,6 +209,9 @@ enum WhisperAudioChunkReader {
         }
         converter.downmix = true
         guard audio.length > 0 else { throw WhisperError.emptyAudio }
+        let maximumSourceFrames = max(1, min(
+            32_768, Int(Double(chunkFrames) * sourceFormat.sampleRate / sampleRate)))
+        let sourceBufferCapacity = AVAudioFrameCount(maximumSourceFrames)
         guard let outputBuffer = AVAudioPCMBuffer(
             pcmFormat: outputFormat, frameCapacity: AVAudioFrameCount(chunkFrames)),
               let sourceBuffer = AVAudioPCMBuffer(
@@ -217,48 +219,12 @@ enum WhisperAudioChunkReader {
             throw WhisperError.audioFormatError
         }
 
-        var reachedEnd = false
         var pending: [Float] = []
         pending.reserveCapacity(chunkFrames * 2)
         var pendingStart = 0
         var outputFrames = 0
 
-        while true {
-            if shouldCancel() { throw CancellationError() }
-            outputBuffer.frameLength = 0
-            let sourcePositionBeforeConversion = audio.framePosition
-            var conversionError: NSError?
-            var readFailed = false
-            let status = converter.convert(to: outputBuffer, error: &conversionError) {
-                requestedPackets, inputStatus in
-                if reachedEnd {
-                    inputStatus.pointee = .endOfStream
-                    return nil
-                }
-                let requestedFrames = min(
-                    sourceBufferCapacity, AVAudioFrameCount(max(1, requestedPackets)))
-                do {
-                    sourceBuffer.frameLength = 0
-                    try audio.read(into: sourceBuffer, frameCount: requestedFrames)
-                } catch {
-                    #if DEBUG
-                    NSLog("Whisper audio conversion read failed: %@", error.localizedDescription)
-                    #endif
-                    readFailed = true
-                    inputStatus.pointee = .noDataNow
-                    return nil
-                }
-                guard sourceBuffer.frameLength > 0 else {
-                    reachedEnd = true
-                    inputStatus.pointee = .endOfStream
-                    return nil
-                }
-                inputStatus.pointee = .haveData
-                return sourceBuffer
-            }
-
-            if readFailed { throw WhisperError.audioFileReadFailed }
-            if status == .error || conversionError != nil { throw WhisperError.audioFormatError }
+        func collectOutput(progress: Double) throws {
             if outputBuffer.frameLength > 0, let channels = outputBuffer.floatChannelData {
                 pending.append(contentsOf: UnsafeBufferPointer(
                     start: channels[0], count: Int(outputBuffer.frameLength)))
@@ -266,7 +232,7 @@ enum WhisperAudioChunkReader {
                     let end = pendingStart + chunkFrames
                     let samples = Array(pending[pendingStart..<end])
                     outputFrames += samples.count
-                    try onChunk(samples, min(1, Double(audio.framePosition) / Double(audio.length)))
+                    try onChunk(samples, min(1, progress))
                     pendingStart = end
                 }
                 if pendingStart >= chunkFrames {
@@ -274,21 +240,60 @@ enum WhisperAudioChunkReader {
                     pendingStart = 0
                 }
             }
+        }
 
-            switch status {
-            case .endOfStream:
-                break
-            case .haveData, .inputRanDry:
-                let madeProgress = outputBuffer.frameLength > 0
-                    || audio.framePosition > sourcePositionBeforeConversion
-                    || reachedEnd
-                guard madeProgress else { throw WhisperError.audioFormatError }
-            case .error:
-                throw WhisperError.audioFormatError
-            @unknown default:
+        // Read outside AVAudioConverter's input callback. The callback supplies
+        // one stable buffer per pull and never re-enters AVAudioFile.
+        while audio.framePosition < audio.length {
+            if shouldCancel() { throw CancellationError() }
+            let remaining = audio.length - audio.framePosition
+            let framesToRead = AVAudioFrameCount(
+                min(AVAudioFramePosition(sourceBufferCapacity), remaining))
+            sourceBuffer.frameLength = 0
+            do { try audio.read(into: sourceBuffer, frameCount: framesToRead) }
+            catch { throw WhisperError.audioFileReadFailed }
+            guard sourceBuffer.frameLength > 0 else { break }
+
+            var supplied = false
+            while true {
+                outputBuffer.frameLength = 0
+                var conversionError: NSError?
+                let status = converter.convert(to: outputBuffer, error: &conversionError) {
+                    _, inputStatus in
+                    guard !supplied else {
+                        inputStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    supplied = true
+                    inputStatus.pointee = .haveData
+                    return sourceBuffer
+                }
+                if status == .error || conversionError != nil { throw WhisperError.audioFormatError }
+                try collectOutput(progress: Double(audio.framePosition) / Double(audio.length))
+                if status == .inputRanDry { break }
+                guard status == .haveData, outputBuffer.frameLength > 0 else {
+                    throw WhisperError.audioFormatError
+                }
+            }
+        }
+
+        // Signal end-of-stream and drain converter priming/tail samples before
+        // emitting the final partial Whisper chunk.
+        while true {
+            if shouldCancel() { throw CancellationError() }
+            outputBuffer.frameLength = 0
+            var conversionError: NSError?
+            let status = converter.convert(to: outputBuffer, error: &conversionError) {
+                _, inputStatus in
+                inputStatus.pointee = .endOfStream
+                return nil
+            }
+            if status == .error || conversionError != nil { throw WhisperError.audioFormatError }
+            try collectOutput(progress: 1)
+            if status == .endOfStream { break }
+            guard status == .haveData, outputBuffer.frameLength > 0 else {
                 throw WhisperError.audioFormatError
             }
-            if status == .endOfStream { break }
         }
 
         if pending.count > pendingStart {
