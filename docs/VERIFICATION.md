@@ -1,6 +1,6 @@
 # Verification status
 
-Date: 2026-08-29
+Date: 2026-09-13
 
 Host: Windows 10.0.26100, Node 24.15.0 and bundled Node 24.19.0 after workspace handoff
 Branch: codex/personal-voice-notes-v1
@@ -35,6 +35,14 @@ npm run build
 - Pinned whisper XCFramework device and simulator slices: built successfully
 - Downloaded IPA: ZIP/Payload, bundle ID, arm64 Mach-O, no signature command, and no bundled models verified
 - IPA SHA-256: 91c0190f63ed707e8f30aa216c6e9906e8fac7b1a7520bb1d0964ce91919c5ca
+- Live-transcription iOS validation Run #4: success on commit 7bc5f24cca0790a76edbb605aca8950b4150f591
+- Portable SwiftPM tests: 27/27 pass, including 48 kHz stereo to 16 kHz mono conversion and provisional-transcript persistence
+- Xcode 16.4 iOS Simulator app build: pass
+- Xcode iOS unit tests: pass
+- Live-transcription unsigned IPA Run #2: success
+- New IPA bundle ID: com.laviant2063.personal.voicenotes; arm64; iOS 17.6 minimum; no code signature/profile/model asset
+- New IPA contains the Speech usage description and statically linked whisper symbols
+- New IPA SHA-256: 4801abb302cb4635c3eb1891be10f691d1696309385e931479cfd8a21a60a396
 - Cloudflare Worker deployed from commit 7515270 with Wrangler
 - Worker endpoint: https://personal-voice-notes.dazzo2063.workers.dev
 - Required Cloudflare secret names: 3/3 present; values not read or logged
@@ -47,21 +55,22 @@ Tree-sitter is not compilation and does not validate Swift types, actors, Apple 
 The unsigned-IPA workflow completed successfully:
 https://github.com/laviant2063/personal-AI-voice-notes/actions/runs/33278908003
 
-The separate iOS validation workflow has not run, so portable core tests,
-simulator build/tests, and Xcode unit tests remain outstanding.
+Live-transcription validation and IPA workflows completed successfully:
+
+- https://github.com/laviant2063/personal-AI-voice-notes/actions/runs/34741959410
+- https://github.com/laviant2063/personal-AI-voice-notes/actions/runs/34777199410
 
 ## Written but not run
 
 WalkWriteTests cover migration, raw immutability, revisions, stale responses, failed regeneration, duplicate/cancelled requests, persistence, filtered deletion, corrupt indexes, interruption recovery, search, backend client errors, model pointers, and path safety.
 
-These require macOS/Xcode. swift test covers the portable store/model subset. Xcode tests cover app/backend-client coordination.
+The updated UI test checks the Korean empty home and mint-button transition, but UI tests were not executed. Physical microphone and Speech behavior cannot be established by these simulator/unit results.
 
 ## Requires macOS/Xcode
 
-1. Run swift test.
-2. Build and test WalkWrite for an iOS simulator.
-3. Run the Xcode unit/UI tests.
-4. Review compiler warnings and the generated privacy report.
+1. Run the remaining UI test on a controlled clean simulator.
+2. Review the generated privacy report in an archive signed for distribution.
+3. Investigate pre-existing app-icon, SwiftPM unhandled-file, and upstream whisper.cpp compiler warnings separately.
 
 ## Requires physical device
 
@@ -72,9 +81,9 @@ These require macOS/Xcode. swift test covers the portable store/model subset. Xc
 - Korean, English, Japanese, Spanish, mixed-language, long recordings
 - playback/timestamp seek, Keychain accessibility, cellular policy
 
-## Deferred until credentials/deployment
+## Deferred until authenticated production verification
 
-- Worker deployment and authenticated readiness
+- Authenticated Worker readiness with the retained APP_TOKEN
 - real Responses API/model access
 - summary/action quality and language evaluation
 - real production errors and cost monitoring

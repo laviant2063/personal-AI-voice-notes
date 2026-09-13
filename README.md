@@ -2,7 +2,7 @@
 
 A personal iPhone/iPad voice-note app based on [WalkWrite](https://github.com/lbacaj/WalkWrite-opensource). It records audio locally, transcribes with an installed multilingual whisper.cpp model, lets you edit and search transcripts, and optionally sends the edited text to your own Cloudflare Worker for one structured AI result.
 
-> Development status: the source and backend mock path are implemented. GitHub Actions Run #1 compiled and linked an unsigned arm64 device Release archive with Xcode 16.4. Simulator tests, signed installation, and physical-device validation have **not** been performed yet.
+> Development status: the source and backend mock path are implemented. GitHub iOS validation Run #4 passed 27 portable tests, the iOS Simulator build, and Xcode unit tests with Xcode 16.4. Unsigned IPA Run #2 archived the arm64 device app. Signed installation and physical-device recording/live-Speech/Whisper validation have **not** been performed yet.
 
 ## Architecture
 
@@ -104,8 +104,8 @@ A simulator does not validate microphone routing, background/interruption behavi
 
 The repository also includes **.github/workflows/ios-validation.yml**. It
 performs the pinned framework build, portable core tests, simulator app build,
-and iOS unit tests on a macOS runner. It has not been run from this uncommitted
-local checkout.
+and iOS unit tests on a macOS runner. The current live-transcription code passed
+[Run #4](https://github.com/laviant2063/personal-AI-voice-notes/actions/runs/34741959410).
 
 ### GitHub unsigned IPA artifact
 
@@ -166,22 +166,25 @@ backend TypeScript typecheck: passed
 backend Node mock tests: 18 passed
 Cloudflare Worker dry-run bundle: passed
 npm audit: 0 vulnerabilities
+SwiftPM portable tests on GitHub macOS: 27 passed
+iOS Simulator app build with Xcode 16.4: passed
+Xcode iOS unit tests: passed
 Swift tree-sitter syntax scan: 32 files, 0 syntax-error nodes
 Xcode project OpenStep parse: passed
 plist parse: passed
 Whisper build script bash syntax: passed
 IPA packaging script Bash parser: 0 syntax-error nodes
 GitHub workflows actionlint: 2 passed
-GitHub Xcode 16.4 unsigned device archive: passed
-Downloaded IPA structure and SHA-256 verification: passed
+GitHub Xcode 16.4 unsigned device archive: passed (Run #2)
+Downloaded live-transcription IPA structure and SHA-256 verification: passed
 Git diff whitespace check: passed
 ```
 
-The local syntax scan is not compilation; GitHub Run #1 separately verified device Release compilation and linkage. See [Verification status](docs/VERIFICATION.md) for exact scope and remaining tests.
+The local syntax scan is not compilation; GitHub iOS validation Run #4 and unsigned IPA Run #2 separately verified compilation/linkage. See [Verification status](docs/VERIFICATION.md) for exact scope and remaining tests.
 
 ## Known limitations
 
-- Device Release compilation/linkage passed on GitHub macOS; simulator and unit/UI tests remain unverified.
+- Device Release compilation/linkage, Simulator build, and unit tests passed on GitHub macOS; UI tests remain unexecuted.
 - Physical recording, live Speech partials, Speech language assets, interruptions, route changes, playback, model import, multilingual STT, long recordings, and memory use remain unverified.
 - The Cloudflare rate-limit bindings are per location and eventually consistent, so also configure OpenAI project budgets/limits.
 - The current recovery path preserves orphaned WAV audio but may not know its precise duration until playback opens it.
