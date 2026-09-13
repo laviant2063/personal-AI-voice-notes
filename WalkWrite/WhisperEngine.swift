@@ -238,8 +238,12 @@ enum WhisperAudioChunkReader {
                 let requestedFrames = min(
                     sourceBufferCapacity, AVAudioFrameCount(max(1, requestedPackets)))
                 do {
+                    sourceBuffer.frameLength = 0
                     try audio.read(into: sourceBuffer, frameCount: requestedFrames)
                 } catch {
+                    #if DEBUG
+                    NSLog("Whisper audio conversion read failed: %@", error.localizedDescription)
+                    #endif
                     readFailed = true
                     inputStatus.pointee = .noDataNow
                     return nil

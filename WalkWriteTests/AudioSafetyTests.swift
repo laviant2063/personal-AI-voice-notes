@@ -28,12 +28,18 @@ final class AudioSafetyTests: XCTestCase {
         }
     }
 
-    func testManagedAudioRejectsTraversalAndOutsidePath() {
-        let directory = URL(fileURLWithPath: "/app/Notes", isDirectory: true)
+    func testManagedAudioRejectsTraversalAndOutsidePath() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ManagedAudioTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("Notes", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let managedAudio = directory.appendingPathComponent("audio.wav")
+        try Data(repeating: 0, count: 64).write(to: managedAudio)
         XCTAssertFalse(AppFolders.isSafeAudioFilename("../outside.wav"))
         XCTAssertFalse(AppFolders.isSafeAudioFilename("folder\\outside.wav"))
-        XCTAssertFalse(AppFolders.isManagedAudio(URL(fileURLWithPath: "/outside.wav"), in: directory))
-        XCTAssertTrue(AppFolders.isManagedAudio(directory.appendingPathComponent("audio.wav"), in: directory))
+        XCTAssertFalse(AppFolders.isManagedAudio(root.appendingPathComponent("outside.wav"), in: directory))
+        XCTAssertTrue(AppFolders.isManagedAudio(managedAudio, in: directory))
     }
 
     func testLiveSpeechLocalesAreExplicitAndAutomaticUsesPreferredLanguage() {
