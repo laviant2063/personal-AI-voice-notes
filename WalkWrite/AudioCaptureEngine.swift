@@ -53,8 +53,7 @@ final class AudioCaptureEngine: @unchecked Sendable {
             AVNumberOfChannelsKey: Int(format.channelCount),
             AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleavedKey: false
+            AVLinearPCMIsBigEndianKey: false
         ]
         let file = try AVAudioFile(
             forWriting: url, settings: fileSettings,
