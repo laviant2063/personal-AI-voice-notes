@@ -13,7 +13,7 @@ public enum WhisperError: Error, LocalizedError {
         case .runtimeMissing: return "The whisper.cpp runtime is not linked. Build the XCFramework on macOS and rebuild the app. Audio is preserved."
         case .modelLoadFailed: return "Whisper could not load this model. The file may be incomplete or too large for the device. Audio is preserved."
         case .audioFileReadFailed: return "The saved audio could not be read. The original file has not been changed."
-        case .audioFormatError: return "Local STT expects the app's 16 kHz mono audio. The original audio is preserved."
+        case .audioFormatError: return "The saved audio could not be converted for local STT. The original audio is preserved."
         case .encodeFailed(let status): return "Local transcription failed (code \(status)). Audio is preserved; retry when ready."
         case .busy: return "Another local transcription is already running."
         case .emptyAudio: return "No audio samples were found. The audio file has been preserved."
@@ -110,32 +110,15 @@ public actor WhisperEngine {
         defer { whisper_free(context) }
         if cancellation.isCancelled() { throw CancellationError() }
 
-        let audio: AVAudioFile
-        do {
-            audio = try AVAudioFile(forReading: audioURL, commonFormat: .pcmFormatFloat32, interleaved: false)
-        } catch { throw WhisperError.audioFileReadFailed }
-        let format = audio.processingFormat
-        guard format.sampleRate == 16_000, format.channelCount == 1 else {
-            throw WhisperError.audioFormatError
-        }
-        guard audio.length > 0 else { throw WhisperError.emptyAudio }
-        let chunkFrames: AVAudioFrameCount = 30 * 16_000
         var segments: [TranscriptSegment] = []
         var words: [WordStamp] = []
-        var position: AVAudioFramePosition = 0
-        while position < audio.length {
+        var outputPosition = 0
+
+        func transcribeChunk(_ samples: [Float]) throws {
             if cancellation.isCancelled() { throw CancellationError() }
-            let count = AVAudioFrameCount(min(AVAudioFramePosition(chunkFrames), audio.length - position))
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: count) else {
-                throw WhisperError.audioFileReadFailed
-            }
-            do { try audio.read(into: buffer, frameCount: count) }
-            catch { throw WhisperError.audioFileReadFailed }
-            guard buffer.frameLength > 0, let channels = buffer.floatChannelData else {
-                throw WhisperError.audioFileReadFailed
-            }
-            let offset = Double(position) / format.sampleRate
-            let chunkEnd = offset + Double(buffer.frameLength) / format.sampleRate
+            guard !samples.isEmpty else { return }
+            let offset = Double(outputPosition) / WhisperAudioChunkReader.sampleRate
+            let chunkEnd = offset + Double(samples.count) / WhisperAudioChunkReader.sampleRate
             var parameters = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
             parameters.n_threads = Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount - 1)))
             parameters.translate = false
@@ -155,7 +138,9 @@ public actor WhisperEngine {
             parameters.abort_callback_user_data = Unmanaged.passUnretained(cancellation).toOpaque()
             let status = language.rawValue.withCString { languagePointer in
                 parameters.language = languagePointer
-                return whisper_full(context, parameters, channels[0], Int32(buffer.frameLength))
+                return samples.withUnsafeBufferPointer { pointer in
+                    whisper_full(context, parameters, pointer.baseAddress, Int32(pointer.count))
+                }
             }
             if cancellation.isCancelled() { throw CancellationError() }
             guard status == 0 else { throw WhisperError.encodeFailed(status: status) }
@@ -176,14 +161,137 @@ public actor WhisperEngine {
                                            end: max(start, min(end, offset + Double(token.t1) / 100))))
                 }
             }
-            position += AVAudioFramePosition(buffer.frameLength)
-            progress(Double(position) / Double(audio.length))
+            outputPosition += samples.count
         }
+
+        try WhisperAudioChunkReader.read(
+            audioFileURL: audioURL,
+            shouldCancel: { cancellation.isCancelled() }
+        ) { samples, conversionProgress in
+            try transcribeChunk(samples)
+            progress(conversionProgress)
+        }
+        guard outputPosition > 0 else { throw WhisperError.emptyAudio }
         // Store the exact native segment text. Never reconstruct raw STT with
         // English spacing rules or send it through an LLM cleanup pass.
         return TranscriptionResult(text: segments.map(\.text).joined(), segments: segments, words: words)
         #else
         throw WhisperError.runtimeMissing
         #endif
+    }
+}
+
+/// Converts a saved recording to bounded, chronological 16 kHz mono chunks.
+/// Kept independent from native Whisper inference so format conversion can be
+/// regression-tested without a model or an API key.
+enum WhisperAudioChunkReader {
+    static let sampleRate = 16_000.0
+    private static let chunkFrames = 30 * 16_000
+    private static let sourceBufferCapacity: AVAudioFrameCount = 32_768
+
+    static func read(
+        audioFileURL: URL,
+        shouldCancel: () -> Bool = { false },
+        onChunk: ([Float], Double) throws -> Void
+    ) throws {
+        let audio: AVAudioFile
+        do {
+            audio = try AVAudioFile(
+                forReading: audioFileURL, commonFormat: .pcmFormatFloat32, interleaved: false)
+        } catch { throw WhisperError.audioFileReadFailed }
+        let sourceFormat = audio.processingFormat
+        guard sourceFormat.sampleRate.isFinite, sourceFormat.sampleRate > 0,
+              sourceFormat.channelCount > 0,
+              let outputFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
+                channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: sourceFormat, to: outputFormat) else {
+            throw WhisperError.audioFormatError
+        }
+        converter.downmix = true
+        guard audio.length > 0 else { throw WhisperError.emptyAudio }
+        guard let outputBuffer = AVAudioPCMBuffer(
+            pcmFormat: outputFormat, frameCapacity: AVAudioFrameCount(chunkFrames)),
+              let sourceBuffer = AVAudioPCMBuffer(
+                pcmFormat: sourceFormat, frameCapacity: sourceBufferCapacity) else {
+            throw WhisperError.audioFormatError
+        }
+
+        var reachedEnd = false
+        var pending: [Float] = []
+        pending.reserveCapacity(chunkFrames * 2)
+        var pendingStart = 0
+        var outputFrames = 0
+
+        while true {
+            if shouldCancel() { throw CancellationError() }
+            outputBuffer.frameLength = 0
+            let sourcePositionBeforeConversion = audio.framePosition
+            var conversionError: NSError?
+            var readFailed = false
+            let status = converter.convert(to: outputBuffer, error: &conversionError) {
+                requestedPackets, inputStatus in
+                if reachedEnd {
+                    inputStatus.pointee = .endOfStream
+                    return nil
+                }
+                let requestedFrames = min(
+                    sourceBufferCapacity, AVAudioFrameCount(max(1, requestedPackets)))
+                do {
+                    try audio.read(into: sourceBuffer, frameCount: requestedFrames)
+                } catch {
+                    readFailed = true
+                    inputStatus.pointee = .noDataNow
+                    return nil
+                }
+                guard sourceBuffer.frameLength > 0 else {
+                    reachedEnd = true
+                    inputStatus.pointee = .endOfStream
+                    return nil
+                }
+                inputStatus.pointee = .haveData
+                return sourceBuffer
+            }
+
+            if readFailed { throw WhisperError.audioFileReadFailed }
+            if status == .error || conversionError != nil { throw WhisperError.audioFormatError }
+            if outputBuffer.frameLength > 0, let channels = outputBuffer.floatChannelData {
+                pending.append(contentsOf: UnsafeBufferPointer(
+                    start: channels[0], count: Int(outputBuffer.frameLength)))
+                while pending.count - pendingStart >= chunkFrames {
+                    let end = pendingStart + chunkFrames
+                    let samples = Array(pending[pendingStart..<end])
+                    outputFrames += samples.count
+                    try onChunk(samples, min(1, Double(audio.framePosition) / Double(audio.length)))
+                    pendingStart = end
+                }
+                if pendingStart >= chunkFrames {
+                    pending.removeFirst(pendingStart)
+                    pendingStart = 0
+                }
+            }
+
+            switch status {
+            case .endOfStream:
+                break
+            case .haveData, .inputRanDry:
+                let madeProgress = outputBuffer.frameLength > 0
+                    || audio.framePosition > sourcePositionBeforeConversion
+                    || reachedEnd
+                guard madeProgress else { throw WhisperError.audioFormatError }
+            case .error:
+                throw WhisperError.audioFormatError
+            @unknown default:
+                throw WhisperError.audioFormatError
+            }
+            if status == .endOfStream { break }
+        }
+
+        if pending.count > pendingStart {
+            let samples = Array(pending[pendingStart...])
+            outputFrames += samples.count
+            try onChunk(samples, 1)
+        }
+        guard outputFrames > 0 else { throw WhisperError.emptyAudio }
     }
 }

@@ -76,13 +76,28 @@ public final class NoteStore {
         try mutate(id) { note in
             _ = note.captureTranscription(text: text, segments: segments, words: words)
         }
-        // Only a newly saved local STT result can trigger opt-in automatic AI.
-        onTranscriptionSaved?(id)
+        // Only a newly saved local STT result with an eligible edited transcript
+        // can trigger opt-in automatic AI. A provisional live draft is excluded.
+        if self[id]?.editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            onTranscriptionSaved?(id)
+        }
+    }
+
+    /// Saves best-effort on-device recognition while recording. A live draft is
+    /// deliberately separate from edited/raw STT and cannot trigger remote AI.
+    @discardableResult
+    func setLiveTranscriptDraft(id: UUID, text: String) throws -> Bool {
+        guard let note = self[id] else { throw NoteStoreError.noteMissing }
+        guard !note.hasCapturedTranscript, note.transcriptRevision == 0 else { return false }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              text != note.liveTranscriptDraft else { return false }
+        try mutate(id) { _ = $0.applyLiveTranscriptDraft(text) }
+        return true
     }
 
     func editTranscript(id: UUID, text: String) throws {
         guard let note = self[id] else { throw NoteStoreError.noteMissing }
-        guard text != note.editedTranscript else { return }
+        guard text != note.editedTranscript || note.liveTranscriptDraft != nil else { return }
         try mutate(id) { _ = try $0.applyTranscriptEdit(text) }
     }
 

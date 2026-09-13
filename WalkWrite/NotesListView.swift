@@ -22,17 +22,17 @@ struct NotesListView: View {
                     Text(error).font(.footnote).foregroundStyle(.red).padding()
                 }
                 if !settings.isBackendConfigured {
-                    Label("AI Not Configured — local notes still work", systemImage: "iphone")
+                    Label("AI 미설정 · 로컬 노트 기능은 계속 사용할 수 있습니다", systemImage: "iphone")
                         .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+                        .accessibilityIdentifier("aiConfigurationStatus")
                 }
                 if store.notes.isEmpty {
-                    ContentUnavailableView("No Notes Yet", systemImage: "mic",
-                                           description: Text("Tap Record to save a voice note on this device."))
+                    EmptyNotesView()
                 } else if filteredNotes.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                 } else {
                     List {
-                        Section("Recent Notes") {
+                        Section("최근 노트") {
                             ForEach(filteredNotes) { note in
                                 NavigationLink(value: note.id) { NoteRow(note: note) }
                                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -53,19 +53,28 @@ struct NotesListView: View {
                     }
                 }
             }
-            .navigationTitle("Voice Notes")
+            .navigationTitle("내 노트")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: UUID.self) { id in NoteDetailView(noteID: id) }
-            .searchable(text: $searchText, prompt: "Search notes and transcripts")
+            .searchable(text: $searchText, prompt: "노트와 받아쓰기 검색")
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    if whisperState.isTranscribing { Text("Local transcription is running").font(.caption) }
-                    RecordButton(isRecording: false) { showRecorder = true }
-                        .accessibilityLabel("Record a voice note")
+                HStack(alignment: .bottom, spacing: 12) {
+                    if whisperState.isTranscribing {
+                        Label("로컬 음성 인식 중", systemImage: "waveform")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.regularMaterial, in: Capsule())
+                    }
+                    Spacer(minLength: 0)
+                    RecordButton(isRecording: false, diameter: 72) { showRecorder = true }
+                        .accessibilityLabel("실시간 음성 인식 노트 시작")
                         .disabled(store.isReadOnly || whisperState.isTranscribing)
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(.regularMaterial)
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -73,7 +82,7 @@ struct NotesListView: View {
                         .accessibilityLabel("Settings")
                 }
             }
-            .sheet(isPresented: $showRecorder) { RecorderSheet() }
+            .fullScreenCover(isPresented: $showRecorder) { RecorderSheet() }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showShareSheet, onDismiss: clearShare) { ShareSheet(shareItems) }
             .alert("Voice Notes", isPresented: Binding(
@@ -96,6 +105,25 @@ struct NotesListView: View {
             try? FileManager.default.removeItem(at: file)
         }
         shareItems = []
+    }
+}
+
+private struct EmptyNotesView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Text("노트가 없습니다")
+                .font(.title2.weight(.semibold))
+                .accessibilityIdentifier("emptyNotesTitle")
+            Text("녹음을 시작하여 첫 노트를 만들어보세요")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

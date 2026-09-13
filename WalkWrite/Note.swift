@@ -31,6 +31,9 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
 
     public private(set) var rawTranscript: String
     public private(set) var editedTranscript: String
+    /// Best-effort on-device speech text shown while recording. This is not
+    /// final STT and must never be used as AI input or treated as immutable raw text.
+    public private(set) var liveTranscriptDraft: String?
     public private(set) var transcriptSegments: [TranscriptSegment]
     public private(set) var transcriptRevision: Int
     public private(set) var words: [WordStamp]
@@ -58,6 +61,11 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
     /// Read compatibility for sharing and existing presentation code.
     /// Editing must go through NoteStore.editTranscript so revisions cannot be lost.
     public var transcript: String { editedTranscript }
+    public var displayTranscript: String {
+        editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (liveTranscriptDraft ?? "")
+            : editedTranscript
+    }
     public var hasCapturedTranscript: Bool { rawTranscriptCaptured }
     public var hasAIResult: Bool {
         aiTitle != nil || aiSummary != nil || !keyPoints.isEmpty || !actionItems.isEmpty
@@ -69,11 +77,11 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         if let title = aiTitle, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return title
         }
-        let firstLine = editedTranscript.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let firstLine = displayTranscript.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         return firstLine.isEmpty ? "Untitled Note" : String(firstLine.prefix(80))
     }
     public var searchText: String {
-        ([aiTitle ?? "", editedTranscript, aiSummary ?? "", summary ?? ""] + keyPoints + (keyIdeas ?? []))
+        ([aiTitle ?? "", editedTranscript, liveTranscriptDraft ?? "", aiSummary ?? "", summary ?? ""] + keyPoints + (keyIdeas ?? []))
             .joined(separator: "\n")
     }
 
@@ -96,6 +104,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         recordingComplete: Bool = true,
         rawTranscript: String? = nil,
         editedTranscript: String? = nil,
+        liveTranscriptDraft: String? = nil,
         transcriptSegments: [TranscriptSegment] = [],
         transcriptRevision: Int = 0,
         transcriptionStatus: TranscriptionStatus? = nil,
@@ -119,10 +128,18 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         self.recordingComplete = recordingComplete
         self.rawTranscript = rawTranscript ?? transcript
         self.editedTranscript = editedTranscript ?? rawTranscript ?? transcript
+        self.liveTranscriptDraft = nil
         self.transcriptSegments = transcriptSegments
         self.transcriptRevision = max(0, transcriptRevision)
         self.words = words
         self.rawTranscriptCaptured = !(rawTranscript ?? transcript).isEmpty || transcriptionStatus == .completed
+        if self.transcriptRevision == 0,
+           self.rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           self.editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let liveTranscriptDraft,
+           !liveTranscriptDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            self.liveTranscriptDraft = liveTranscriptDraft
+        }
         self.transcriptionStatus = transcriptionStatus ?? (self.rawTranscriptCaptured ? .completed : .notStarted)
         self.transcriptionError = transcriptionError
         self.cleanedTranscript = cleanedTranscript
@@ -149,6 +166,9 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         guard !rawTranscriptCaptured else { return false }
         rawTranscript = text
         rawTranscriptCaptured = true
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            liveTranscriptDraft = nil
+        }
         transcriptSegments = segments
         self.words = words
         if transcriptRevision == 0 {
@@ -159,18 +179,30 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         return true
     }
 
+    /// Persist provisional on-device recognition without promoting it to raw STT
+    /// or advancing the user-edit revision. Empty callbacks cannot erase useful text.
+    @discardableResult
+    mutating func applyLiveTranscriptDraft(_ text: String) -> Bool {
+        guard !rawTranscriptCaptured, transcriptRevision == 0 else { return false }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard text != liveTranscriptDraft else { return false }
+        liveTranscriptDraft = text
+        return true
+    }
+
     @discardableResult
     mutating func applyTranscriptEdit(_ text: String) throws -> Bool {
-        guard text != editedTranscript else { return false }
+        guard text != editedTranscript || liveTranscriptDraft != nil else { return false }
         guard transcriptRevision < Int.max else { throw NoteStoreError.revisionExhausted }
         editedTranscript = text
+        liveTranscriptDraft = nil
         transcriptRevision += 1
         return true
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, createdAt, updatedAt, duration, audioURL, audioFilename, recordingComplete
-        case transcript, words, rawTranscript, editedTranscript, transcriptSegments, transcriptRevision, rawTranscriptCaptured
+        case transcript, words, rawTranscript, editedTranscript, liveTranscriptDraft, transcriptSegments, transcriptRevision, rawTranscriptCaptured
         case transcriptionStatus, transcriptionError
         case aiTitle, aiSummary, keyPoints, actionItems, aiStatus, aiModel, aiGeneratedAt, aiTranscriptRevision, aiError
         case cleanedTranscript, summary, keyIdeas, enhancementFailed
@@ -204,6 +236,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         let legacyTranscript = try values.decodeIfPresent(String.self, forKey: .transcript)
         rawTranscript = try values.decodeIfPresent(String.self, forKey: .rawTranscript) ?? legacyTranscript ?? ""
         editedTranscript = try values.decodeIfPresent(String.self, forKey: .editedTranscript) ?? legacyTranscript ?? rawTranscript
+        liveTranscriptDraft = try values.decodeIfPresent(String.self, forKey: .liveTranscriptDraft)
         transcriptRevision = try values.decodeIfPresent(Int.self, forKey: .transcriptRevision) ?? 0
         guard transcriptRevision >= 0, duration.isFinite, duration >= 0 else {
             throw DecodingError.dataCorruptedError(forKey: .transcriptRevision, in: values, debugDescription: "Invalid note revision or duration.")
@@ -214,6 +247,12 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         let savedSTTStatus = try values.decodeIfPresent(TranscriptionStatus.self, forKey: .transcriptionStatus)
         rawTranscriptCaptured = try values.decodeIfPresent(Bool.self, forKey: .rawTranscriptCaptured)
             ?? (!rawTranscript.isEmpty || savedSTTStatus == .completed)
+        if (rawTranscriptCaptured && !rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ||
+            !editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            transcriptRevision != 0 ||
+            liveTranscriptDraft?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            liveTranscriptDraft = nil
+        }
         transcriptionStatus = savedSTTStatus ?? (rawTranscriptCaptured ? .completed : .notStarted)
         transcriptionError = try values.decodeIfPresent(String.self, forKey: .transcriptionError)
         cleanedTranscript = try values.decodeIfPresent(String.self, forKey: .cleanedTranscript)
@@ -250,6 +289,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         try values.encode(editedTranscript, forKey: .transcript)
         try values.encode(rawTranscript, forKey: .rawTranscript)
         try values.encode(editedTranscript, forKey: .editedTranscript)
+        try values.encodeIfPresent(liveTranscriptDraft, forKey: .liveTranscriptDraft)
         try values.encode(transcriptSegments, forKey: .transcriptSegments)
         try values.encode(transcriptRevision, forKey: .transcriptRevision)
         try values.encode(rawTranscriptCaptured, forKey: .rawTranscriptCaptured)

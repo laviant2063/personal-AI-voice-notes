@@ -6,7 +6,10 @@ import UIKit
 /// Explicit user export. Edited text remains the main content of every export.
 enum TranscriptSharing {
     static func makeItems(for note: Note) throws -> (String, URL) {
-        let body = note.editedTranscript
+        let isProvisional = note.editedTranscript.isEmpty && note.liveTranscriptDraft != nil
+        let body = isProvisional
+            ? "Provisional on-device live transcript\n\n" + note.displayTranscript
+            : note.editedTranscript
         var content = body
         if note.editedTranscript == note.rawTranscript && !note.transcriptSegments.isEmpty {
             let lines = note.transcriptSegments.map {

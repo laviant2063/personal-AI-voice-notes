@@ -17,7 +17,8 @@ let package = Package(
             ],
             sources: [
                 "AIModels.swift", "AppFolders.swift", "Note.swift", "NoteStore.swift",
-                "WhisperModelManager.swift", "WhisperStateManager.swift"
+                "LiveSpeechRecognizer.swift", "WhisperEngine.swift", "WhisperModelManager.swift",
+                "WhisperStateManager.swift"
             ]
         ),
         .testTarget(

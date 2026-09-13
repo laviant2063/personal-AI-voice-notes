@@ -5,6 +5,7 @@ struct TranscriptEditor: View {
     @Environment(NoteStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     private let noteID: UUID
+    private let canAdoptProvisionalDraft: Bool
     @State private var draft: String
     @State private var originalText: String
     @State private var originalRevision: Int
@@ -13,8 +14,9 @@ struct TranscriptEditor: View {
 
     init(note: Note) {
         noteID = note.id
-        _draft = State(initialValue: note.editedTranscript)
-        _originalText = State(initialValue: note.editedTranscript)
+        canAdoptProvisionalDraft = note.liveTranscriptDraft != nil && note.editedTranscript.isEmpty
+        _draft = State(initialValue: note.displayTranscript)
+        _originalText = State(initialValue: note.displayTranscript)
         _originalRevision = State(initialValue: note.transcriptRevision)
     }
 
@@ -23,6 +25,10 @@ struct TranscriptEditor: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Edits change only your edited transcript. The original STT text remains unchanged.")
                     .font(.footnote).foregroundStyle(.secondary)
+                if canAdoptProvisionalDraft {
+                    Text("Save to adopt this provisional live transcript as your edited transcript.")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
                 TextEditor(text: $draft).accessibilityLabel("Edited transcript")
                 if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
             }
@@ -35,7 +41,8 @@ struct TranscriptEditor: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(draft == originalText || store.isReadOnly)
+                    Button("Save") { save() }
+                        .disabled((draft == originalText && !canAdoptProvisionalDraft) || store.isReadOnly)
                 }
             }
             .interactiveDismissDisabled(draft != originalText)

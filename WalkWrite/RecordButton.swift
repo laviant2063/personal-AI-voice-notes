@@ -1,29 +1,38 @@
 import SwiftUI
 
-/// Big circular mic/stop button that toggles recording state.
+/// Circular live-record/stop control shared by the home and recording screens.
 struct RecordButton: View {
     var isRecording: Bool
+    var diameter: CGFloat = 76
     var action: () -> Void
+
+    private let mint = Color(red: 0.02, green: 0.76, blue: 0.69)
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .foregroundStyle(isRecording ? .red : .accentColor)
-                    .frame(width: 88, height: 88)
+                    .foregroundStyle(isRecording ? Color.red : mint)
+                    .overlay {
+                        Circle().stroke(.white.opacity(0.7), lineWidth: 1)
+                    }
 
                 if isRecording {
                     Image(systemName: "stop.fill")
-                        .font(.system(size: 32))
+                        .font(.system(size: diameter * 0.34, weight: .semibold))
                         .foregroundStyle(.white)
                 } else {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 32))
+                    Image(systemName: "waveform")
+                        .font(.system(size: diameter * 0.38, weight: .medium))
                         .foregroundStyle(.white)
                 }
             }
+            .frame(width: diameter, height: diameter)
+            .contentShape(Circle())
         }
-        .shadow(radius: 4)
+        .buttonStyle(.plain)
+        .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
+        .accessibilityIdentifier(isRecording ? "stopRecordingButton" : "liveRecordButton")
     }
 }
 

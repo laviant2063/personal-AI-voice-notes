@@ -15,15 +15,25 @@ final class RecorderViewModel: NSObject, ObservableObject {
     @Published private(set) var transcriptionProgress: Double = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var errorMessage: String?
+    @Published private(set) var liveTranscript = ""
+    @Published private(set) var liveSpeechMessage: String?
     @Published private(set) var activeNoteID: UUID?
     @Published private(set) var transcribingNoteID: UUID?
     @Published var transcriptionLanguage: WhisperLanguage = .automatic
 
     private weak var store: NoteStore?
-    private var recorder: AVAudioRecorder?
+    private var captureEngine: AudioCaptureEngine?
+    private let liveSpeechRecognizer = LiveSpeechRecognizer()
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var transcriptionTask: Task<Void, Never>?
+    private var liveSpeechTask: Task<Void, Never>?
+    private var liveSpeechStartGeneration = UUID()
+    private var lastLiveDraftCheckpoint: TimeInterval = 0
+    private var lastLiveSpeechRollover: TimeInterval = 0
+    private var lastSavedLiveDraft = ""
+    private var lastObservedCaptureDuration: TimeInterval = 0
+    private var lastCaptureProgressAt = Date()
 
     override init() {
         super.init()
@@ -63,14 +73,20 @@ final class RecorderViewModel: NSObject, ObservableObject {
             Task { @MainActor in
                 // Existing background recording remains enabled. Heavy STT is
                 // foreground-only and is always retryable from preserved audio.
+                self?.suspendLiveSpeechForBackground()
                 self?.cancelTranscription()
             }
+        })
+        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                                             object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.resumeLiveSpeechAfterBackground() }
         })
     }
 
     deinit {
         timer?.invalidate()
-        recorder?.stop()
+        captureEngine?.stop()
+        liveSpeechTask?.cancel()
         transcriptionTask?.cancel()
         observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
@@ -102,75 +118,94 @@ final class RecorderViewModel: NSObject, ObservableObject {
         }
         finishedNote = nil
         errorMessage = nil
+        liveTranscript = ""
+        liveSpeechMessage = nil
         elapsed = 0
+        lastLiveDraftCheckpoint = 0
+        lastLiveSpeechRollover = 0
+        lastSavedLiveDraft = ""
+        lastObservedCaptureDuration = 0
+        lastCaptureProgressAt = .now
         let id = UUID()
+        var noteWasAdded = false
         do {
             let directory = try AppFolders.ensureNotesDirectory()
             let url = directory.appendingPathComponent(id.uuidString).appendingPathExtension("wav")
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            // These are preferences, not assumptions. The authoritative file
+            // uses the actual hardware format and Whisper resamples after Stop.
+            try? session.setPreferredSampleRate(16_000)
+            try? session.setPreferredInputNumberOfChannels(1)
             try session.setActive(true)
-            let settings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: 16_000,
-                AVNumberOfChannelsKey: 1,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false
-            ]
-            let recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder.isMeteringEnabled = true
-            recorder.delegate = self
-            guard recorder.prepareToRecord() else { throw RecordingError.startFailed }
-            do {
-                try FileManager.default.setAttributes(
-                    [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: url.path)
-            } catch {
-                // The app container still has platform-default protection.
-                // A best-effort attribute must never prevent audio capture.
-                errorMessage = "Recording started, but the preferred file-protection attribute was unavailable."
-            }
             // Metadata exists BEFORE the microphone starts writing user audio.
             try store.add(Note(id: id, audioURL: url, recordingComplete: false))
+            noteWasAdded = true
             activeNoteID = id
-            self.recorder = recorder
-            guard recorder.record() else {
-                try store.updateRecording(id: id, duration: 0, completed: true)
-                try store.setTranscriptionStatus(id: id, status: .failed, error: RecordingError.startFailed.localizedDescription)
-                throw RecordingError.startFailed
-            }
+
+            let capture = AudioCaptureEngine()
+            let liveSpeech = liveSpeechRecognizer
+            try capture.start(
+                writingTo: url,
+                onBuffer: { buffer in liveSpeech.append(buffer) },
+                onLevel: { [weak self] level in
+                    Task { @MainActor in
+                        guard let self, self.isRecording, !self.isPaused else { return }
+                        self.audioLevel = level
+                    }
+                },
+                onFailure: { [weak self] message in
+                    Task { @MainActor in
+                        self?.finishRecording(transcribe: false, warning: message)
+                    }
+                }
+            )
+            captureEngine = capture
             isRecording = true
             isPaused = false
+            lastCaptureProgressAt = .now
             startTimer()
+            startLiveSpeechRecognition()
         } catch {
-            recorder?.delegate = nil
-            recorder?.stop()
-            recorder = nil
+            captureEngine?.stop()
+            captureEngine = nil
             isRecording = false
             isPaused = false
             activeNoteID = nil
             errorMessage = error.localizedDescription
+            if noteWasAdded {
+                try? store.updateRecording(id: id, duration: 0, completed: true)
+                try? store.setTranscriptionStatus(
+                    id: id, status: .failed, error: RecordingError.startFailed.localizedDescription)
+                finishedNote = store[id]
+            }
             deactivateSession()
         }
     }
 
     func pauseRecording() {
-        guard isRecording, !isPaused, let recorder else { return }
-        elapsed = max(elapsed, recorder.currentTime)
-        recorder.pause()
+        guard isRecording, !isPaused, let captureEngine else { return }
+        elapsed = max(elapsed, captureEngine.duration)
+        captureEngine.pause()
+        let pausedTranscript = liveSpeechRecognizer.pause()
+        if !pausedTranscript.isEmpty { liveTranscript = pausedTranscript }
         isPaused = true
         audioLevel = 0
         timer?.invalidate()
+        checkpointLiveTranscript(force: true)
         checkpoint()
     }
 
     func resumeRecording() {
-        guard isRecording, isPaused, let recorder else { return }
+        guard isRecording, isPaused, let captureEngine else { return }
         do {
             try AVAudioSession.sharedInstance().setActive(true)
-            guard recorder.record() else { throw RecordingError.resumeFailed }
+            try captureEngine.resume()
+            liveSpeechRecognizer.resume()
             isPaused = false
             errorMessage = nil
+            lastObservedCaptureDuration = captureEngine.duration
+            lastCaptureProgressAt = .now
             startTimer()
         } catch {
             errorMessage = error.localizedDescription
@@ -181,12 +216,16 @@ final class RecorderViewModel: NSObject, ObservableObject {
     func stopRecording() { finishRecording(transcribe: true, warning: nil) }
 
     private func finishRecording(transcribe: Bool, warning: String?) {
-        guard isRecording, let recorder else { return }
-        let duration = max(elapsed, recorder.currentTime)
+        guard isRecording, let captureEngine else { return }
         let noteID = activeNoteID
-        self.recorder = nil
-        recorder.delegate = nil
-        recorder.stop()
+        self.captureEngine = nil
+        let capturedDuration = captureEngine.stop()
+        let duration = max(elapsed, capturedDuration)
+        liveSpeechStartGeneration = UUID()
+        liveSpeechTask?.cancel()
+        liveSpeechTask = nil
+        let finalLiveTranscript = liveSpeechRecognizer.stop()
+        if !finalLiveTranscript.isEmpty { liveTranscript = finalLiveTranscript }
         timer?.invalidate()
         timer = nil
         isRecording = false
@@ -197,6 +236,7 @@ final class RecorderViewModel: NSObject, ObservableObject {
         deactivateSession()
         guard let noteID, let store else { return }
         do {
+            checkpointLiveTranscript(noteID: noteID, force: true)
             try store.updateRecording(id: noteID, duration: duration, completed: true)
             if let warning {
                 errorMessage = warning
@@ -271,6 +311,18 @@ final class RecorderViewModel: NSObject, ObservableObject {
 
     func cancelTranscription() { transcriptionTask?.cancel() }
 
+    func changeTranscriptionLanguage(_ language: WhisperLanguage) {
+        guard transcriptionLanguage != language else { return }
+        transcriptionLanguage = language
+        guard isRecording else { return }
+        liveSpeechStartGeneration = UUID()
+        liveSpeechTask?.cancel()
+        let previousTranscript = liveSpeechRecognizer.stop()
+        if !previousTranscript.isEmpty { liveTranscript = previousTranscript }
+        liveSpeechMessage = nil
+        startLiveSpeechRecognition()
+    }
+
     private func startTimer() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -279,15 +331,102 @@ final class RecorderViewModel: NSObject, ObservableObject {
     }
 
     private func tick() {
-        guard isRecording, !isPaused, let recorder else { return }
-        if !recorder.isRecording {
+        guard isRecording, !isPaused, let captureEngine else { return }
+        if !captureEngine.isRunning {
             pauseRecording()
             errorMessage = "Recording stopped receiving audio and was paused. Resume or Stop to preserve the file."
             return
         }
-        elapsed = max(elapsed, recorder.currentTime)
-        recorder.updateMeters()
-        audioLevel = max(0, min(1, pow(10, recorder.averagePower(forChannel: 0) / 20)))
+        let captureDuration = captureEngine.duration
+        elapsed = max(elapsed, captureDuration)
+        if captureDuration > lastObservedCaptureDuration {
+            lastObservedCaptureDuration = captureDuration
+            lastCaptureProgressAt = .now
+        } else if Date().timeIntervalSince(lastCaptureProgressAt) > 2 {
+            pauseRecording()
+            errorMessage = "The microphone stopped delivering audio. Recording is paused; Stop now to preserve the available file."
+            return
+        }
+        if elapsed - lastLiveDraftCheckpoint >= 5 {
+            checkpointLiveTranscript(force: false)
+            lastLiveDraftCheckpoint = elapsed
+        }
+        if elapsed - lastLiveSpeechRollover >= 50 {
+            liveSpeechRecognizer.rollover()
+            lastLiveSpeechRollover = elapsed
+        }
+    }
+
+    private func startLiveSpeechRecognition() {
+        liveSpeechTask?.cancel()
+        let startGeneration = UUID()
+        liveSpeechStartGeneration = startGeneration
+        liveSpeechMessage = "기기 내 실시간 음성 인식을 준비하고 있습니다…"
+        let language = transcriptionLanguage
+        liveSpeechTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await liveSpeechRecognizer.start(
+                language: language,
+                initialTranscript: liveTranscript,
+                onUpdate: { [weak self] text in
+                    guard let self, self.isRecording,
+                          self.liveSpeechStartGeneration == startGeneration else { return }
+                    self.liveTranscript = text
+                    self.liveSpeechMessage = nil
+                },
+                onFailure: { [weak self] message in
+                    guard let self, self.isRecording,
+                          self.liveSpeechStartGeneration == startGeneration else { return }
+                    self.liveSpeechMessage = message
+                }
+            )
+            // A cancelled permission request may return after a newer language
+            // or foreground start has succeeded. It must never stop that newer
+            // shared recognizer instance.
+            guard !Task.isCancelled, liveSpeechStartGeneration == startGeneration,
+                  isRecording, transcriptionLanguage == language else { return }
+            switch result {
+            case .started(let localeIdentifier):
+                liveSpeechMessage = language == .automatic
+                    ? "실시간 인식 언어: \(localeIdentifier) · 최종 Whisper는 자동 감지"
+                    : nil
+                lastLiveSpeechRollover = elapsed
+            case .unavailable(let message):
+                liveSpeechMessage = message
+            }
+        }
+    }
+
+    private func suspendLiveSpeechForBackground() {
+        guard isRecording else { return }
+        liveSpeechStartGeneration = UUID()
+        liveSpeechTask?.cancel()
+        liveSpeechTask = nil
+        let transcript = liveSpeechRecognizer.stop()
+        if !transcript.isEmpty { liveTranscript = transcript }
+        checkpointLiveTranscript(force: true)
+        liveSpeechMessage = "백그라운드에서는 실시간 받아쓰기가 일시 중단됩니다. 오디오 녹음은 계속됩니다."
+    }
+
+    private func resumeLiveSpeechAfterBackground() {
+        guard isRecording, !isPaused, liveSpeechTask == nil else { return }
+        startLiveSpeechRecognition()
+    }
+
+    private func checkpointLiveTranscript(force: Bool) {
+        guard let noteID = activeNoteID else { return }
+        checkpointLiveTranscript(noteID: noteID, force: force)
+    }
+
+    private func checkpointLiveTranscript(noteID: UUID, force: Bool) {
+        let draft = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !draft.isEmpty, (force || draft != lastSavedLiveDraft) else { return }
+        do {
+            try store?.setLiveTranscriptDraft(id: noteID, text: draft)
+            lastSavedLiveDraft = draft
+        } catch {
+            if errorMessage == nil { errorMessage = error.localizedDescription }
+        }
     }
 
     private func checkpoint() {
@@ -308,27 +447,6 @@ private enum RecordingError: LocalizedError {
         switch self {
         case .startFailed: return "Recording could not start. Check the microphone and available device storage."
         case .resumeFailed: return "Recording could not resume. It is still paused; Stop will save the available audio."
-        }
-    }
-}
-
-extension RecorderViewModel: AVAudioRecorderDelegate {
-    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        let url = recorder.url
-        Task { @MainActor [weak self] in
-            guard let self, self.recorder?.url == url else { return }
-            self.finishRecording(transcribe: false,
-                warning: flag ? "Recording ended. The audio was saved; you can transcribe it from the note."
-                    : "Recording ended unexpectedly. The available audio was saved; listen before retrying.")
-        }
-    }
-
-    nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-        let url = recorder.url
-        Task { @MainActor [weak self] in
-            guard let self, self.recorder?.url == url else { return }
-            self.finishRecording(transcribe: false,
-                warning: "An audio encoding error occurred. The available file was preserved.")
         }
     }
 }

@@ -85,6 +85,8 @@ jobs:
           }
           executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
           [[ -x "$app/$executable" ]] || { echo "App executable is missing." >&2; exit 1; }
+          speech_usage="$(/usr/libexec/PlistBuddy -c 'Print :NSSpeechRecognitionUsageDescription' "$app/Info.plist")"
+          [[ -n "$speech_usage" ]] || { echo "Speech recognition usage description is missing." >&2; exit 1; }
           [[ ! -e "$app/_CodeSignature" ]] || { echo "Expected an unsigned app." >&2; exit 1; }
           bash ./scripts/package-unsigned-ipa.sh \
             "$app" "$PWD/.build/ipa/PersonalVoiceNotes-unsigned.ipa"

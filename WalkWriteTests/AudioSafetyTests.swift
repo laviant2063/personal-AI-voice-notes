@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import WalkWrite
 
@@ -33,5 +34,56 @@ final class AudioSafetyTests: XCTestCase {
         XCTAssertFalse(AppFolders.isSafeAudioFilename("folder\\outside.wav"))
         XCTAssertFalse(AppFolders.isManagedAudio(URL(fileURLWithPath: "/outside.wav"), in: directory))
         XCTAssertTrue(AppFolders.isManagedAudio(directory.appendingPathComponent("audio.wav"), in: directory))
+    }
+
+    func testLiveSpeechLocalesAreExplicitAndAutomaticUsesPreferredLanguage() {
+        XCTAssertEqual(LiveSpeechLocale.identifier(for: .ko), "ko-KR")
+        XCTAssertEqual(LiveSpeechLocale.identifier(for: .en), "en-US")
+        XCTAssertEqual(LiveSpeechLocale.identifier(for: .ja), "ja-JP")
+        XCTAssertEqual(LiveSpeechLocale.identifier(for: .es), "es-ES")
+        XCTAssertEqual(
+            LiveSpeechLocale.identifier(for: .automatic, preferredLanguages: ["ko-KR", "en-US"]),
+            "ko-KR"
+        )
+    }
+
+    func testWhisperReaderDownmixesAndResamples48kStereoInBoundedChunks() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WhisperAudioReader-\(UUID().uuidString).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let format = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
+            channels: 2, interleaved: false))
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 48_000,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false
+        ]
+        var file: AVAudioFile? = try AVAudioFile(
+            forWriting: url, settings: settings,
+            commonFormat: .pcmFormatFloat32, interleaved: false)
+        let input = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
+        input.frameLength = 48_000
+        let channels = try XCTUnwrap(input.floatChannelData)
+        for frame in 0..<Int(input.frameLength) {
+            let sample = Float(sin(2 * Double.pi * 440 * Double(frame) / 48_000)) * 0.25
+            channels[0][frame] = sample
+            channels[1][frame] = -sample
+        }
+        try XCTUnwrap(file).write(from: input)
+        file = nil // Finalize the WAV header before the reader opens it.
+
+        var converted: [Float] = []
+        try WhisperAudioChunkReader.read(audioFileURL: url) { samples, _ in
+            XCTAssertLessThanOrEqual(samples.count, 30 * 16_000)
+            converted.append(contentsOf: samples)
+        }
+
+        XCTAssertLessThanOrEqual(Swift.abs(converted.count - 16_000), 128)
+        XCTAssertLessThan(converted.map { Swift.abs($0) }.max() ?? 1, 0.02,
+                          "Opposite stereo channels should cancel when downmixed, not remap one channel")
     }
 }

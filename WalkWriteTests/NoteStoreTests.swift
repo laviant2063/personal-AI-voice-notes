@@ -35,6 +35,7 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertEqual(note.aiModel, "legacy-local-llm")
         XCTAssertEqual(note.audioURL, directory.appendingPathComponent("old.wav"))
         XCTAssertEqual(note.transcriptRevision, 0)
+        XCTAssertNil(note.liveTranscriptDraft)
         XCTAssertEqual(try Data(contentsOf: index), original, "Loading must not rewrite the index")
     }
 
@@ -62,6 +63,134 @@ final class NoteStoreTests: XCTestCase {
         try store.setTranscription(id: note.id, text: "Local STT", segments: [], words: [])
         XCTAssertEqual(store[note.id]?.rawTranscript, "Local STT")
         XCTAssertEqual(store[note.id]?.editedTranscript, "User draft")
+    }
+
+    func testLiveTranscriptDraftSurvivesInterruptedRecordingRelaunch() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"), recordingComplete: false)
+        try store.add(note)
+
+        XCTAssertTrue(try store.setLiveTranscriptDraft(id: note.id, text: "첫 번째 실시간 문장"))
+        XCTAssertTrue(try store.setLiveTranscriptDraft(id: note.id, text: "첫 번째 실시간 문장 두 번째 문장"))
+        XCTAssertFalse(try store.setLiveTranscriptDraft(id: note.id, text: ""))
+
+        let reopened = try XCTUnwrap(NoteStore(directory: directory)[note.id])
+        XCTAssertEqual(reopened.liveTranscriptDraft, "첫 번째 실시간 문장 두 번째 문장")
+        XCTAssertEqual(reopened.displayTranscript, "첫 번째 실시간 문장 두 번째 문장")
+        XCTAssertEqual(reopened.rawTranscript, "")
+        XCTAssertEqual(reopened.editedTranscript, "")
+        XCTAssertEqual(reopened.transcriptRevision, 0)
+        XCTAssertFalse(reopened.hasCapturedTranscript)
+        XCTAssertEqual(reopened.transcriptionStatus, .failed)
+    }
+
+    func testFinalWhisperReplacesAndClearsLiveDraftAtRevisionZero() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"))
+        try store.add(note)
+        try store.setLiveTranscriptDraft(id: note.id, text: "Provisional words")
+
+        try store.setTranscription(id: note.id, text: "Final local Whisper",
+                                   segments: [TranscriptSegment(startTime: 0, text: "Final local Whisper")], words: [])
+
+        let finalized = try XCTUnwrap(store[note.id])
+        XCTAssertNil(finalized.liveTranscriptDraft)
+        XCTAssertEqual(finalized.rawTranscript, "Final local Whisper")
+        XCTAssertEqual(finalized.editedTranscript, "Final local Whisper")
+        XCTAssertEqual(finalized.transcriptRevision, 0)
+        XCTAssertTrue(finalized.hasCapturedTranscript)
+        XCTAssertFalse(try store.setLiveTranscriptDraft(id: note.id, text: "Late callback"))
+    }
+
+    func testEmptyFinalWhisperKeepsLiveDraftAsClearlyProvisionalFallback() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"))
+        try store.add(note)
+        var automaticAIEvents: [UUID] = []
+        store.onTranscriptionSaved = { automaticAIEvents.append($0) }
+        try store.setLiveTranscriptDraft(id: note.id, text: "기기 내 임시 대본")
+
+        try store.setTranscription(id: note.id, text: "", segments: [], words: [])
+
+        let reopened = try XCTUnwrap(NoteStore(directory: directory)[note.id])
+        XCTAssertTrue(reopened.hasCapturedTranscript)
+        XCTAssertEqual(reopened.rawTranscript, "")
+        XCTAssertEqual(reopened.editedTranscript, "")
+        XCTAssertEqual(reopened.liveTranscriptDraft, "기기 내 임시 대본")
+        XCTAssertEqual(reopened.displayTranscript, "기기 내 임시 대본")
+        XCTAssertThrowsError(try store.beginAIRequest(id: note.id))
+        XCTAssertTrue(automaticAIEvents.isEmpty)
+    }
+
+    func testUserCanExplicitlyClearAProvisionalLiveDraft() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"))
+        try store.add(note)
+        try store.setLiveTranscriptDraft(id: note.id, text: "잘못 인식된 임시 대본")
+
+        try store.editTranscript(id: note.id, text: "")
+
+        XCTAssertNil(store[note.id]?.liveTranscriptDraft)
+        XCTAssertEqual(store[note.id]?.editedTranscript, "")
+        XCTAssertEqual(store[note.id]?.transcriptRevision, 1)
+    }
+
+    func testUserCanAdoptAnUnchangedProvisionalLiveDraft() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"))
+        try store.add(note)
+        try store.setLiveTranscriptDraft(id: note.id, text: "채택할 임시 대본")
+
+        try store.editTranscript(id: note.id, text: "채택할 임시 대본")
+
+        XCTAssertNil(store[note.id]?.liveTranscriptDraft)
+        XCTAssertEqual(store[note.id]?.editedTranscript, "채택할 임시 대본")
+        XCTAssertEqual(store[note.id]?.transcriptRevision, 1)
+    }
+
+    func testUserEditStillWinsWhenFinalWhisperClearsLiveDraft() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"))
+        try store.add(note)
+        try store.setLiveTranscriptDraft(id: note.id, text: "Live words")
+        try store.editTranscript(id: note.id, text: "User correction")
+
+        XCTAssertNil(store[note.id]?.liveTranscriptDraft)
+        XCTAssertFalse(try store.setLiveTranscriptDraft(id: note.id, text: "Ignored later partial"))
+        try store.setTranscription(id: note.id, text: "Final local Whisper", segments: [], words: [])
+
+        let finalized = try XCTUnwrap(store[note.id])
+        XCTAssertNil(finalized.liveTranscriptDraft)
+        XCTAssertEqual(finalized.rawTranscript, "Final local Whisper")
+        XCTAssertEqual(finalized.editedTranscript, "User correction")
+        XCTAssertEqual(finalized.transcriptRevision, 1)
+    }
+
+    func testLiveTranscriptDraftCannotStartAIRequest() async throws {
+        let (directory, store) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let note = Note(audioURL: directory.appendingPathComponent("audio.wav"))
+        try store.add(note)
+        var automaticAIEvents: [UUID] = []
+        store.onTranscriptionSaved = { automaticAIEvents.append($0) }
+        try store.setLiveTranscriptDraft(id: note.id, text: "Not final STT")
+
+        XCTAssertThrowsError(try store.beginAIRequest(id: note.id)) { error in
+            guard let storeError = error as? NoteStoreError else {
+                return XCTFail("Expected NoteStoreError.emptyTranscript")
+            }
+            guard case .emptyTranscript = storeError else {
+                return XCTFail("Expected NoteStoreError.emptyTranscript, got \(storeError)")
+            }
+        }
+        XCTAssertEqual(store[note.id]?.aiStatus, .notRequested)
+        XCTAssertTrue(automaticAIEvents.isEmpty)
     }
 
     func testRevisionThreeResponseCannotOverwriteRevisionFourOrPreviousResult() async throws {

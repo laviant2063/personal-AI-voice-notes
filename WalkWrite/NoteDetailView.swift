@@ -192,7 +192,12 @@ struct NoteDetailView: View {
                     Spacer()
                     Button("Edit") { editingTranscript = true }.disabled(store.isReadOnly)
                 }
-                Text(note.editedTranscript.isEmpty ? "No transcript yet." : note.editedTranscript)
+                if note.editedTranscript.isEmpty, note.liveTranscriptDraft != nil {
+                    Label("Provisional on-device live transcript — final Whisper text was not available.",
+                          systemImage: "waveform.badge.exclamationmark")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
+                Text(note.displayTranscript.isEmpty ? "No transcript yet." : note.displayTranscript)
                     .textSelection(.enabled)
                 if let error = note.transcriptionError {
                     Text(error).font(.footnote).foregroundStyle(.orange)

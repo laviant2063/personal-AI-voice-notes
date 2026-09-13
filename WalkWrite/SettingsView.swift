@@ -80,10 +80,13 @@ struct SettingsView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                     Text("Model status checks the file header, not inference quality or memory requirements. Start with a small multilingual model for device testing.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    Text("Live text uses Apple Speech only when this device supports on-device recognition for the selected language. It is provisional; unsupported devices continue recording and use local Whisper after Stop.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Privacy") {
                     Text("Transcript text is sent to the configured remote AI backend only when AI processing is requested.")
                     Text("The backend forwards that text to OpenAI. Audio is never uploaded for AI. Your raw transcript is never replaced by AI. Local notes survive AI failures.")
+                    Text("Live Speech is forced to on-device processing and has no network fallback. A live draft is never eligible for AI processing until local Whisper saves an edited transcript.")
                     Text("The personal backend does not permanently store notes or transcripts. OpenAI's own data-retention policies still apply.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

@@ -7,9 +7,15 @@ A personal iPhone/iPad voice-note app based on [WalkWrite](https://github.com/lb
 ## Architecture
 
 ```text
-AVAudioRecorder → app-owned WAV → durable Note metadata
-                                  ↓
-                   installed whisper.cpp GGML model
+                    one AVAudioEngine microphone tap
+                         ↙                     ↘
+           app-owned WAV                 on-device Apple Speech
+                 ↓                        live draft (optional)
+        durable Note metadata                    ↓
+                 ↓                          local checkpoint
+       bounded 16 kHz mono conversion
+                 ↓
+       installed whisper.cpp GGML model
                                   ↓
                 raw transcript + segments (immutable)
                                   ↓
@@ -29,19 +35,22 @@ The iOS client never receives or stores `OPENAI_API_KEY`. The Worker has no note
 ## What works offline
 
 - Recording, Pause, Resume, Stop, WAV storage, and playback
+- Best-effort live text when the selected language supports Apple on-device recognition
 - Installed-model whisper.cpp transcription
 - Raw/edited transcript storage and editing
 - Note persistence, deletion, action-item completion, lexical search
 - Search over AI title, edited transcript, summary, and key points
 - Opening notes after relaunch
 
-First-time model provisioning may require internet. After a multilingual GGML model is imported, transcription uses the local whisper.cpp runtime.
+First-time model provisioning may require internet. After a multilingual GGML model is imported, final transcription uses the local whisper.cpp runtime. Live text is provisional and requires Speech Recognition permission plus an on-device recognizer/language asset; the app never falls back to network Speech. If live text is unavailable, audio recording and final local Whisper continue.
 
 Online-only functionality is limited to AI title, summary, key points, and action items. There is no cloud STT, account, payment, analytics, cloud note sync, semantic search, speaker diarization, translation pipeline, or local LLM.
 
 ## Safety behavior
 
 - Note metadata is written before microphone capture starts. Stop finalizes it before STT.
+- The same microphone buffer feeds WAV storage and optional live text; only successfully written audio is offered to live recognition.
+- Live partial text is stored separately from raw/edited transcripts and cannot trigger AI processing.
 - Audio remains available when STT, networking, backend, or AI fails.
 - A corrupt note index becomes read-only; it is never silently replaced by an empty list.
 - Atomic writes keep the previous readable index as `notes.backup.json`.
@@ -125,7 +134,7 @@ The importer copies into the app container without replacing an existing good mo
 
 ## Language policy
 
-Local STT supports Auto Detect, Korean, English, Japanese, and Spanish selections. AI output is instructed to follow the transcript's primary language and preserve useful mixed-language terminology. No separate translation pipeline exists. No language-quality test was performed in this Windows environment.
+Final local Whisper supports Auto Detect, Korean, English, Japanese, and Spanish selections. Live Speech uses Korean (`ko-KR`), English (`en-US`), Japanese (`ja-JP`), Spanish (`es-ES`), or the device's preferred language for Auto Detect. Availability depends on Apple on-device language support. AI output is instructed to follow the transcript's primary language and preserve useful mixed-language terminology. No separate translation pipeline exists. No language-quality test was performed in this Windows environment.
 
 ## Backend
 
@@ -142,11 +151,11 @@ Required Worker secrets/environment:
 - `OPENAI_MODEL`
 - `APP_TOKEN`
 
-No model name is hard-coded as the runtime default. Consult the current [OpenAI model catalog](https://developers.openai.com/api/docs/models) when configuring `OPENAI_MODEL\).
+No model name is hard-coded as the runtime default. Consult the current [OpenAI model catalog](https://developers.openai.com/api/docs/models) when configuring `OPENAI_MODEL`.
 
 ## Privacy
 
-Audio never goes to the AI backend. Only the saved edited transcript is sent, either after tapping **Generate AI Summary** or after enabling Automatic AI Summary and creating a new transcription.
+Audio never goes to the AI backend. Apple Speech requests are started only when the selected recognizer reports on-device support, and every request sets `requiresOnDeviceRecognition = true`; unsupported live recognition is disabled instead of using a network fallback. Only the saved edited Whisper transcript is sent to the personal AI backend, either after tapping **Generate AI Summary** or after enabling Automatic AI Summary and creating a new transcription.
 
 The Worker sets `store: false`, logs only request ID/status/latency/input character count/model/error category, and never logs the transcript. OpenAI platform data controls and retention are separate from this app; review the current [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) before use.
 
@@ -173,7 +182,7 @@ The local syntax scan is not compilation; GitHub Run #1 separately verified devi
 ## Known limitations
 
 - Device Release compilation/linkage passed on GitHub macOS; simulator and unit/UI tests remain unverified.
-- Physical recording, interruptions, route changes, playback, model import, multilingual STT, long recordings, and memory use remain unverified.
+- Physical recording, live Speech partials, Speech language assets, interruptions, route changes, playback, model import, multilingual STT, long recordings, and memory use remain unverified.
 - The Cloudflare rate-limit bindings are per location and eventually consistent, so also configure OpenAI project budgets/limits.
 - The current recovery path preserves orphaned WAV audio but may not know its precise duration until playback opens it.
 - There is no model downloader; import is a deliberate user action.

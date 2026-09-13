@@ -5,23 +5,27 @@
 | Layer | Component | Responsibility |
 |---|---|---|
 | UI | NotesListView, RecorderSheet, NoteDetailView, SettingsView | User actions and disclosure |
-| Coordination | RecorderViewModel, AIController | Recording/STT and one logical AI operation |
-| Services | WhisperEngine, AISummaryService, BackendAPIClient | Local C inference and backend transport |
+| Coordination | RecorderViewModel, AIController | Recording/live draft/final STT and one logical AI operation |
+| Services | AudioCaptureEngine, LiveSpeechRecognizer, WhisperEngine, AISummaryService, BackendAPIClient | Single microphone capture, optional on-device live text, local C inference, and backend transport |
 | Storage | NoteStore, AppFolders, Keychain | Atomic metadata, app-owned files, APP_TOKEN |
 | Backend | Cloudflare Worker | Authentication, validation, cost controls, Responses API |
 
 ## Data invariants
 
 1. Note ID and app-owned WAV URL are persisted before microphone capture.
-2. rawTranscript is captured once and cannot be edited or regenerated over.
-3. User edits change only editedTranscript and increment transcriptRevision.
-4. AI uses the immutable edited-text snapshot in AIRequestContext.
-5. Request token, response revision, and current note revision must all match.
-6. Starting regeneration clears none of the prior generated fields.
-7. Only complete validated success replaces generated fields atomically.
-8. Loading, editing, relaunching, and reconnecting are not upload events.
-9. Only a newly persisted local STT result may invoke opt-in automatic AI.
-10. Local notes never depend on AI success.
+2. One AVAudioEngine input tap feeds authoritative WAV storage and optional live text; live Speech never owns a second microphone path.
+3. Live Speech runs only when on-device recognition is supported and every request requires on-device processing.
+4. liveTranscriptDraft is provisional, cannot become AI input, and never fires the automatic-AI callback.
+5. rawTranscript is captured once and cannot be edited or regenerated over.
+6. A nonempty final Whisper result replaces the live draft at revision zero. An empty result retains the draft only as a clearly marked fallback.
+7. User edits change only editedTranscript and increment transcriptRevision.
+8. AI uses the immutable edited-text snapshot in AIRequestContext.
+9. Request token, response revision, and current note revision must all match.
+10. Starting regeneration clears none of the prior generated fields.
+11. Only complete validated success replaces generated fields atomically.
+12. Loading, editing, relaunching, and reconnecting are not upload events.
+13. Only a newly persisted local Whisper result may invoke opt-in automatic AI.
+14. Local notes never depend on AI success.
 
 ## Stale response
 
@@ -40,6 +44,8 @@ Cancellation retires the token immediately, so an uncooperative transport cannot
 |---|---|
 | Recorder setup/start | Explicit error; no success state |
 | Interruption/route loss | Paused; no automatic resume |
+| Live Speech denied/unsupported/fails | WAV continues; final local Whisper still runs |
+| Live Speech task duration | Rotated while WAV capture continues; draft remains provisional |
 | Termination | Incomplete note/audio recovered |
 | Missing/bad Whisper model | Audio retained; STT retryable |
 | STT cancellation/failure | Audio/existing text retained |
